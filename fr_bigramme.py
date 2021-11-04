@@ -1,15 +1,25 @@
 # -*- coding: utf-8 -*-
 
 import logging
-from pickle import INT, STRING
 import re
 import numpy as np
 
-lettre=['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z']
-lettre2=['A','B','C','D','E','F','G','H','I','J','K','L','M','N','O','P','Q','R','S','T','U','V','W','X','Y','Z',' ']
-
 alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-alphabet_ = alphabet + " "
+alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+
+def char_to_id(c):
+    """
+        Retourne la position d'une lettre dans l'alphabet, 26 pour l'espace
+    """
+    return 26 if c==" " else ord(c) - 65
+
+
+def id_to_char(i):
+    """
+        Retourne la lettre numéro i+1 de l'alphabet 
+    """
+    return " " if i==26 else chr(i+65)
+
 
 def simplifie(texte):
     """
@@ -75,38 +85,37 @@ def simplifie(texte):
     return res
 
 
-def frequence(texte: STRING):
+def frequence(texte):
     """
-        Compte le nombre d'occurences de chaque lettre dans un texte
+        Compte le nombre d'occurences de chaque lettre dans un texte simplifié
     """
 
-    # A la fin on aura 1 compteur par lettre de l'alphabet
-    compteur=[]                 
+    # 1 compteur par lettre de l'alphabet + l'espace, qu'ici on ne compte pas
+    cpt=np.zeros(27)              
 
     # pour chaque lettre de l'alphabet 
     for k in alphabet:
-        c=texte.count(k)
-        logging.debug("comptage des %s : %d", k, c)
-        compteur.append(c)
+        cpt[char_to_id(k)]=texte.count(k)
+        logging.debug("comptage des %s : %d", k, cpt[char_to_id(k)])
             
-    return compteur  
+    return cpt  
 
 
 def frequence_normalisee(compteurs = []):
     """
-        Normalise un tableau de compteur en divisant chaque élément par la
+        Normalise un tableau de compteurs en divisant chaque élément par la
         somme de tous les éléments, puis renvoie le résultat sous la forme 
         d'un tableau de pourcentage.
     """
-    total = 0
-    for cpt in compteurs:
-        total+=cpt
+    total = np.sum(compteurs)
+    cpt = np.zeros(27)
 
-    res = []
-    for i in range(len(compteurs)):
-        res.append ( (compteurs[i]/total)*100 )   
-    
-    return res
+    # 0 c'est A, 1 c'est B, etc.
+    for i, item in enumerate(compteurs):
+        cpt[i] = (item/total)*100
+        logging.debug("pct pour %s : %f", id_to_char(i), cpt[i])    
+
+    return cpt
 
 
 def bigramme(texte):
@@ -116,27 +125,32 @@ def bigramme(texte):
         famille. Une famille de bigrammes rassemble tous les bigrammes
         commençant par la même lettre. ON obtient ainsi un tableau normalisé
         dont la somme des éléments de chaque ligne vaut 1.
-   
     """   
+
     # matrice 26*27 ou la ligne correspont à la première lettre du bigramme et la colonne la seconde
-    bigramme=np.zeros((len(lettre),len(lettre2)))       
-    compteur=np.zeros((len(lettre)))
+    big=np.zeros((26, 27))       
+    cpt=np.zeros((26))
     
-    for i in range(len(texte)-1):
-        
-        for k in range(len(lettre)):                        #pour chaque lettre, on va regarder celle qui suit et ajouter 1 au bigramme correspondant
-            if texte[i].upper()==lettre[k]:
-                for j in range(len(lettre2)):
-                    if texte[i+1].upper()==lettre2[j]:
-                        bigramme[k][j]+=1
-                        compteur[k]+=1
-    
-    for h in range(len(lettre)):
-        if compteur[h] != 0:
-            for f in range(len(lettre2)):
-                bigramme[h][f]=bigramme[h][f]/compteur[h]      #on divise par le nombre total de bigrammes rencontrés
+    # parcourt du text en lisant un caractère (current) et le suivant (next_)
+    # on découpe ainsi le texte en bigrammes
+    # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau big
+    # et le compteur de la famille
+    for (index, thing) in enumerate(texte):
+        if index < len(texte):
+            current, next_ = thing, texte[index + 1]
+            # un bigramme ne commence pas par un espace
+            if current != " ":
+                i = char_to_id(current)
+                j = char_to_id(next_)
+                big[i][j]+=1
+                cpt[i]+=1
+
+    for i, c in enumerate(cpt):
+        if c != 0:
+            for j, a in enumerate(alphabet_):
+                big[i][j] = big[i][j] / c    
             
-    return bigramme
+    return big
 
 
 def indice(texte):
@@ -173,11 +187,11 @@ def plausibilite(texte, big_ref = []):
 
     # la plausibilite c'est la somme des probabilités de rencontrer un bigramme 
     # multipliée par le nombre de fois qu'on le rencontre
-    for i in (0, 25, 1):
-        for j in (0, 26, 1):            
-            if big_ref[i][j] != 0:
-                p += big[i][j] * np.log(big_ref[i][j])     
-   
+    for index, x in np.ndenumerate(big_ref):
+        if x != 0:
+            logging.debug("Indice %s, value 1 %f, value 2 %f ", index, x, np.take(big, index))
+            p += np.take(big, index) * np.log( x )
+
     return (p/len(texte))
 
 
@@ -206,7 +220,9 @@ if __name__ == '__main__':
     logging.info("Indice de coincidence des Misérables (vaut environ 0.0746 en français) : %f", ic)
 
     big_ref = bigramme(baba)
-    #logging.debug("Initialisation des bigrammes des Misérables : %s", big_ref)
+    logging.debug("Initialisation des bigrammes des Misérables : %s", big_ref)
+    p0 = plausibilite(baba, big_ref)
+    logging.info("Vérification de la plausibilité des Misérables : %f", p0)
 
     t1 = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
     baba = simplifie(t1)
