@@ -4,12 +4,13 @@ import logging
 import re
 import numpy as np
 
-alphabet = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+alphabet  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
 
 def char_to_id(c):
     """
-        Retourne la position d'une lettre dans l'alphabet, 26 pour l'espace
+        Retourne la position de 0 à 25 d'une lettre dans l'alphabet, 26 pour l'espace
+        Rem: char(65)='A' et ord('A')=65
     """
     return 26 if c==" " else ord(c) - 65
 
@@ -46,7 +47,7 @@ def simplifie(texte):
     texte = re.sub(chr(230),"AE", texte)
 
     # Remplacement des accents et convertion des signes de ponctuation en espaces
-    to_A = [192,224,226]
+    to_A = [192,195,224,226]
     to_C = [199,231]
     to_E = [200,201,202,232,233,234,235]
     to_I = [238,239]
@@ -75,8 +76,10 @@ def simplifie(texte):
         if ord(c2) in to_O:
             c2 = "O"
         if ord(c2) in to_U:
-            c2 = "U"  
-        maj += c2
+            c2 = "U" 
+        # il peut rester des caractères bizarres, on les élimine ici
+        if c2 in alphabet_: 
+            maj += c2
 
     # Plusieurs espaces consécutifs sont regroupés en un seul
     #   utilisation de la lib re = regular expression
@@ -88,35 +91,25 @@ def simplifie(texte):
 def frequence(texte):
     """
         Compte le nombre d'occurences de chaque lettre dans un texte simplifié
+        puis retourne un tableau de pourcentages sous la forme d'un dict trié
+        par valeur del aplus petite (W) à la plus grande (E)
     """
 
     # 1 compteur par lettre de l'alphabet + l'espace, qu'ici on ne compte pas
-    cpt=np.zeros(27)              
-
+    freq={x: 0 for x in alphabet}             
+    total=0
+    
     # pour chaque lettre de l'alphabet 
     for k in alphabet:
-        cpt[char_to_id(k)]=texte.count(k)
-        logging.debug("comptage des %s : %d", k, cpt[char_to_id(k)])
-            
-    return cpt  
+        freq[k]=texte.count(k)
+        total+=freq[k]
+        logging.debug("comptage des %s : %d", k, freq[k])
 
+    for k in alphabet:
+        freq[k]=(freq[k]/total)*100
 
-def frequence_normalisee(compteurs = []):
-    """
-        Normalise un tableau de compteurs en divisant chaque élément par la
-        somme de tous les éléments, puis renvoie le résultat sous la forme 
-        d'un tableau de pourcentage.
-    """
-    total = np.sum(compteurs)
-    cpt = np.zeros(27)
-
-    # 0 c'est A, 1 c'est B, etc.
-    for i, item in enumerate(compteurs):
-        cpt[i] = (item/total)*100
-        logging.debug("pct pour %s : %f", id_to_char(i), cpt[i])    
-
-    return cpt
-
+    sorted_by_values = sorted(freq,key=lambda x:freq[x])
+    return sorted_by_values  
 
 def bigramme(texte):
     """
@@ -136,7 +129,7 @@ def bigramme(texte):
     # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau big
     # et le compteur de la famille
     for (index, thing) in enumerate(texte):
-        if index < len(texte):
+        if index < len(texte) - 1:
             current, next_ = thing, texte[index + 1]
             # un bigramme ne commence pas par un espace
             if current != " ":
@@ -187,18 +180,53 @@ def plausibilite(texte, big_ref = []):
 
     # la plausibilite c'est la somme des probabilités de rencontrer un bigramme 
     # multipliée par le nombre de fois qu'on le rencontre
-    for index, x in np.ndenumerate(big_ref):
-        if x != 0:
-            logging.debug("Indice %s, value 1 %f, value 2 %f ", index, x, np.take(big, index))
-            p += np.take(big, index) * np.log( x )
+    epsilon = 10e-6
+    for ix,iy in np.ndindex(big_ref.shape):
+        x=big_ref[ix,iy]
+        if x == 0:
+            mul = np.log(epsilon)
+        else:
+            mul = np.log(x)
+
+        p += big[ix,iy] * mul
 
     return (p/len(texte))
+
+
+def proposition_initiale(texte, freq_ref):
+    """
+        Prend un texte chiffré en argument et renvoie une proposition de 
+        dechiffrement initiale basée sur la fréquence des caractères
+    """
+    
+    # tableau des lettres triées par occurence croissante
+    freq=frequence(texte)
+
+    #copie du texte sur lequel on travaille
+    res=[char for char in texte]
+
+    # chaque lettre du texte est remplacée par son équivalente dans le 
+    # tableau des fréquences de référence issues de VH.
+
+    # i est l'indice global de res
+    i=0  
+    for c in res:
+        # indice du caractère dans le tableau des fréqeunces
+        if c != ' ' :
+            indice=freq.index(c)
+            # sub = caractère du même indice dans les fréquences de référence
+            sub=freq_ref[indice]
+            res[i]=sub
+        i+=1
+            
+    res="".join(res)
+    return res
 
 
 # Point d'entrée du programme, utilisation depuis la ligne de commande:
 # python3 fr_bigramme.py
 if __name__ == '__main__':
-    FORMAT = '%(asctime)-15s %(name)s:%(levelname)s:%(message)s'
+    FORMAT = '%(asctime)-15s:%(levelname)s:%(message)s'
     logging.basicConfig(format=FORMAT)
     logging.getLogger().setLevel(logging.DEBUG)
 
@@ -210,14 +238,11 @@ if __name__ == '__main__':
     logging.info("Simplification des Misérables")
     baba = simplifie(livre)
 
-    freq = frequence(baba)
-    logging.debug("Occurences des lettres dans Les Misérables : %s", freq)
+    freq_ref = frequence(baba)
+    logging.debug("Occurences des lettres dans Les Misérables : %s", freq_ref)
 
-    freq_norm = frequence_normalisee(freq)
-    logging.debug("Fréquences normalisée dans Les Misérables : %s", freq_norm)
-
-    ic = indice(baba)
-    logging.info("Indice de coincidence des Misérables (vaut environ 0.0746 en français) : %f", ic)
+    #ic = indice(baba)
+    #logging.info("Indice de coincidence des Misérables (vaut environ 0.0746 en français) : %f", ic)
 
     big_ref = bigramme(baba)
     logging.debug("Initialisation des bigrammes des Misérables : %s", big_ref)
@@ -226,14 +251,24 @@ if __name__ == '__main__':
 
     t1 = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
     baba = simplifie(t1)
-    ic1 = indice(baba)
+    #ic1 = indice(baba)
+    ic1=0
     p1 = plausibilite(baba, big_ref)
     logging.info("[IC1 = %f] [P1 = %f] ==> [%s]", ic1, p1, baba)
 
+
     #print(Monte_Carlo('Gf yaom wf htmom tllaot daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'))
     
-    t3 = 'Thanks so much. This is a simple sentence you can use to thank someone'
+    t3 = "Thanks so much. This is a simple sentence you can use to thank someone"
     baba = simplifie(t3)
-    ic3 = indice(baba)
+    #ic3 = indice(baba)
+    ic3=0
     p3 = plausibilite(baba, big_ref)
     logging.info("[IC3 = %f] [P3 = %f] ==> [%s]", ic3, p3, baba)
+
+    enigme='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
+    baba = simplifie(enigme)
+    prop = proposition_initiale(baba, freq_ref)
+    p = plausibilite(prop, big_ref)
+    logging.info("Proposition initiale de plausibilité %d [%s]", p, prop)
+    
