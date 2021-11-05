@@ -291,7 +291,7 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
                 best_plau = new_plau                
                 best_code = new_code
         else:
-            if ( (cur_plau / new_plau) * np.log(cur_plau/break_plau) > x) :
+            if ( (cur_plau / new_plau) * 0.010) > x :
                 logging.info("(itération %d)saut de %f vers %f", cpt, cur_plau, new_plau)
                 cur_texte = new_texte
                 cur_plau  = new_plau
