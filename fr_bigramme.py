@@ -95,7 +95,7 @@ def frequence(texte):
     """
         Compte le nombre d'occurences de chaque lettre dans un texte simplifié
         puis retourne un tableau de pourcentages sous la forme d'un dict trié
-        par valeur del aplus petite (W) à la plus grande (E)
+        par valeur de la plus petite (W) à la plus grande (E)
     """
 
     # 1 compteur par lettre de l'alphabet
@@ -111,7 +111,7 @@ def frequence(texte):
         logging.debug("comptage des %s : %d", k, freq[k])
 
     for k in alphabet:
-        freq[k]=(freq[k]/total)*100
+        freq[k]=freq[k]/total
 
     # trie le dict par valeurs
     # REFERENCE: https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
@@ -129,7 +129,7 @@ def bigramme(texte):
         dont la somme des éléments de chaque ligne vaut 1.
     """   
 
-    # matrice 26*27 ou la ligne correspont à la première lettre du bigramme et la colonne la seconde
+    # matrice 26*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
     big=np.zeros((26, 27))       
     cpt=np.zeros((26))
     
@@ -137,20 +137,20 @@ def bigramme(texte):
     # on découpe ainsi le texte en bigrammes
     # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau big
     # et le compteur de la famille
-    for (index, thing) in enumerate(texte):
-        if index < len(texte) - 1:
-            current, next_ = thing, texte[index + 1]
-            # un bigramme ne commence pas par un espace
-            if current != " ":
-                i = char_to_id(current)
-                j = char_to_id(next_)
-                big[i][j]+=1
-                cpt[i]+=1
+    s=list(texte)
+    current = s[0]
+    for next_ in s[1:] :
+        if current != ' ' :
+            i = char_to_id(current)
+            j = char_to_id(next_)
+            big[i][j]+=1
+            cpt[i]+=1
+        current = next_
 
-    for i, c in enumerate(cpt):
-        if c != 0:
-            for j, a in enumerate(alphabet_):
-                big[i][j] = big[i][j] / c    
+    for i in range(26):
+        if cpt[i] != 0:
+            for j in range(27):
+                big[i][j] = big[i][j] / cpt[i]    
 
     logging.debug("Initialisation des bigrammes terminées : %s", big)   
     return big
@@ -173,13 +173,11 @@ def indice(texte):
         total += texte.count(c)
     den = float(total)*(float(total)-1)
 
-    freq: dict [str, float]
     freq = frequence(texte)
-
     for f in list(freq.values()):
         # ici on retrouve le nb d'occurences de chaque lettre en multipliant 
         # le frequence par le nombre total de caractères dans la chaine
-        occ=(f*total)/100
+        occ=f*total
         sum = sum + occ*(occ - 1) 
 
     res = sum/den
@@ -191,41 +189,40 @@ def indice(texte):
 def plausibilite(texte, big_ref = []):
     """
         Caclul de la plausibilité p d'un texte à partir du tableau des bigrammes
-        issu de l'analyze des Misérables
+        issu de l'analyze des Misérables.
+
+        La plausibilite c'est la somme des probabilités de rencontrer un bigramme 
+        multipliée par le nombre de fois qu'on le rencontre.
     """
-    p=0
-    big = bigramme(texte)
-
-    # la plausibilite c'est la somme des probabilités de rencontrer un bigramme 
-    # multipliée par le nombre de fois qu'on le rencontre
     epsilon = 10e-6
-    for ix,iy in np.ndindex(big_ref.shape):
-        x=big_ref[ix,iy]
-        if x == 0:
-            mul = np.log(epsilon)
-        else:
-            mul = np.log(x)
 
-        p += big[ix,iy] * mul
+    # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
+    # de la propabilité (+ epsilon pour traiter les nuls)
+    big=np.zeros((26, 27))
+    s=list(texte)
+    current = s[0]
+    for next_ in s[1:] :
+        if current != ' ' :
+            i = char_to_id(current)
+            j = char_to_id(next_)
+            big[i][j]+=np.log(big_ref[i,j] + epsilon)
+        current = next_
 
-    res = p/len(texte)
+    plau=np.sum(big)/len(texte)
 
-    logging.info("Plausibilité du texte : %f", res)
-    return res
+    logging.debug("Plausibilité du texte : %f", plau)
+    return plau
 
 
-def proposition(texte, freq_ref: dict):
+def proposition(texte, code_ref: list):
     """
         Prend un texte chiffré en argument et renvoie une proposition de 
         dechiffrement basée sur la fréquence des caractères
     """
     
     # dict des lettres triées par occurence croissante
-    freq=frequence(texte)
-
-    # listes des lettres triées des dict
-    liste_ref = list(freq_ref.keys())
-    liste     = list(freq.keys())
+    freq = frequence(texte)
+    code = list(freq.keys())
 
     # copie du texte sur lequel on travaille
     res = list(texte)
@@ -238,9 +235,9 @@ def proposition(texte, freq_ref: dict):
     for c in res:
         if c != ' ' :
             # indice du caractère dans le tableau des fréqeunces
-            indice=liste.index(c)
+            indice = code.index(c)
             # sub = caractère du même indice dans les fréquences de référence
-            sub=liste_ref[indice]
+            sub = code_ref[indice]
             res[i]=sub
         i+=1
 
@@ -257,52 +254,56 @@ def echange(texte, i , j):
     return ''.join(liste)
 
 
-def Monte_Carlo(iteration, p0, freq_ref, big_ref, texte):
+def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
 
-    cur_texte = str(texte)
-    best_text = str(texte)
-    p = p0
-    best_p = p0
+    break_plau = -1.7
+
+    cur_code  = code_init
+    cur_texte = str(texte_init)
+    cur_plau  = plau_init
+
+    best_code = code_init
+    best_text = str(texte_init)
+    best_plau = plau_init
     
     # TODO utiliser la distance à l'indice de plausibilité de référence plutôt qu'un nombre d'itérations fixe
-    compteur=0
-    while compteur < iteration :
+    cpt=0
+    while cpt < max_iter :
 
         # échange de 2 éléments au hasard
-        i = np.random.randint(1,26)
-        j = np.random.randint(1,26)       
-        new_texte = echange(cur_texte, i, j)
-        
-        essai = proposition(new_texte, freq_ref)
-        p2 = plausibilite(essai, big_ref)
+        i = np.random.randint(0,26)
+        j = np.random.randint(0,26)       
+        new_code  = echange(cur_code, i, j)
+        new_texte = proposition(cur_texte, new_code)
+        new_plau  = plausibilite(new_texte, big_ref)
         
         x = np.random.rand()
-        a=max(abs(p),abs(p2))
-        b=min(abs(p),abs(p2))
-        dist = np.exp((b - a) )
-        logging.info("dist %f", dist)
         # si la plausibilité est meilleure on garde le nouveau texte,
         # sinon soit on garde le nouveau texte, soit on revient au texte précédent.
         # Dépend du résultat d'un aléa:
         # TODO expliquer l'aléa
-        # if p<p2:
-        #     p=p2
-        #     cur_texte = essai
-        # else:
-        #     
-        #     if (a-b) <= 0.5 and x > b/a :
-        #         p=p2
-        #         cur_texte = essai
+        if new_plau > cur_plau:
+            cur_plau  = new_plau
+            cur_texte = new_texte
+            cur_code  = new_code
+            if new_plau > best_plau:
+                best_text = new_texte
+                best_plau = new_plau                
+                best_code = new_code
+        else:
+            if ( (cur_plau / new_plau) * np.log(cur_plau/break_plau) > x) :
+                logging.info("(itération %d)saut de %f vers %f", cpt, cur_plau, new_plau)
+                cur_texte = new_texte
+                cur_plau  = new_plau
+                cur_code  = new_code
 
-        if x < dist:
-            cur_texte = essai
-            p = p2
-            if p2 > p :
-                best_p = p
-                best_text = cur_texte  
+        if best_plau > break_plau:
+            break
+        cpt+=1      
+        logging.debug("Proposition %d(%f) [%s]", cpt, cur_plau, cur_texte)
 
-        compteur+=1      
-        logging.info("Proposition %d(%f) [%s]", compteur, best_p, best_text)
+    logging.info("Proposition finale(%f) [%s]", best_plau, best_text)
+    return best_code
 
 
 
@@ -360,8 +361,14 @@ if __name__ == '__main__':
     enigme='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
     logging.info("Déchiffrement de [%s]", enigme)
     baba = simplifie(enigme)
-    prop = proposition(baba, freq_ref)
+    prop = proposition(baba, list(freq_ref.keys()))
     p = plausibilite(prop, big_ref)
     logging.info("Proposition initiale [%s]", prop)
-    
-    Monte_Carlo(2000, p, freq_ref, big_ref, prop)
+
+    Monte_Carlo(200000, p, list(freq_ref.keys()), big_ref, prop)
+
+    # enigme="On fait un petit essai mais sur un texte plus long car l'utilisation d un texte de trois mots ne semble pas fonctionner. Allons plus loin pour voir jusqu'où ça va"
+    # logging.info("Déchiffrement de [%s]", enigme)
+    # baba = simplifie(enigme)
+    # p = plausibilite(baba, big_ref)
+    # logging.info("P = %f [%s]", p, baba)
