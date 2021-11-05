@@ -227,25 +227,24 @@ def proposition(texte, freq_ref: dict):
     liste_ref = list(freq_ref.keys())
     liste     = list(freq.keys())
 
-    #copie du texte sur lequel on travaille
-    res=[char for char in texte]
+    # copie du texte sur lequel on travaille
+    res = list(texte)
 
     # chaque lettre du texte est remplacée par son équivalente dans le 
-    # tableau des fréquences de référence issues de VH.
+    # tableau des fréquences de référence issues de Victor Hugo.
 
     # i est l'indice global de res
     i=0  
     for c in res:
-        # indice du caractère dans le tableau des fréqeunces
         if c != ' ' :
+            # indice du caractère dans le tableau des fréqeunces
             indice=liste.index(c)
             # sub = caractère du même indice dans les fréquences de référence
             sub=liste_ref[indice]
             res[i]=sub
         i+=1
-            
-    res="".join(res)
-    return res
+
+    return ''.join(res)
 
 
 def echange(texte, i , j):
@@ -259,47 +258,51 @@ def echange(texte, i , j):
 
 
 def Monte_Carlo(iteration, p0, freq_ref, big_ref, texte):
-    
-    sample=[]
-    for i in range(26):
-        sample.append(i)
-    
-    res = texte
-    p = p0
 
+    cur_texte = str(texte)
+    best_text = str(texte)
+    p = p0
+    best_p = p0
+    
     # TODO utiliser la distance à l'indice de plausibilité de référence plutôt qu'un nombre d'itérations fixe
     compteur=0
     while compteur < iteration :
 
         # échange de 2 éléments au hasard
-        transposition=rd.sample(sample,2)
-        echange(res,transposition[0],transposition[1])
+        i = np.random.randint(1,26)
+        j = np.random.randint(1,26)       
+        new_texte = echange(cur_texte, i, j)
         
-        essai = proposition(res, freq_ref)
+        essai = proposition(new_texte, freq_ref)
         p2 = plausibilite(essai, big_ref)
         
+        x = np.random.rand()
+        a=max(abs(p),abs(p2))
+        b=min(abs(p),abs(p2))
+        dist = np.exp((b - a) )
+        logging.info("dist %f", dist)
         # si la plausibilité est meilleure on garde le nouveau texte,
         # sinon soit on garde le nouveau texte, soit on revient au texte précédent.
         # Dépend du résultat d'un aléa:
         # TODO expliquer l'aléa
-        if p<p2:
-            p=p2
-            res=essai
-        else:
-            f=rd.random()
-            a=max(abs(p),abs(p2))
-            b=min(abs(p),abs(p2))
-            
-            if a-b>0.5:
-                echange(res,transposition[0],transposition[1])
-            elif f>b/a:
-                p=p2
-                res=essai
-            else:
-                echange(res,transposition[0],transposition[1])
-                
+        # if p<p2:
+        #     p=p2
+        #     cur_texte = essai
+        # else:
+        #     
+        #     if (a-b) <= 0.5 and x > b/a :
+        #         p=p2
+        #         cur_texte = essai
+
+        if x < dist:
+            cur_texte = essai
+            p = p2
+            if p2 > p :
+                best_p = p
+                best_text = cur_texte  
+
         compteur+=1      
-        logging.info("Proposition %d [%s]", compteur, res)
+        logging.info("Proposition %d(%f) [%s]", compteur, best_p, best_text)
 
 
 
@@ -361,4 +364,4 @@ if __name__ == '__main__':
     p = plausibilite(prop, big_ref)
     logging.info("Proposition initiale [%s]", prop)
     
-    Monte_Carlo(10000, p, freq_ref, big_ref, prop)
+    Monte_Carlo(2000, p, freq_ref, big_ref, prop)
