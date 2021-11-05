@@ -2,7 +2,9 @@
 
 import logging
 import re
+from typing import Iterable
 import numpy as np
+import random as rd
 
 alphabet  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -85,6 +87,7 @@ def simplifie(texte):
     #   utilisation de la lib re = regular expression
     res = re.sub('\s+',' ', maj)
     
+    logging.info("Simplification du texte terminée: %d caractères", len(res))
     return res
 
 
@@ -95,8 +98,10 @@ def frequence(texte):
         par valeur del aplus petite (W) à la plus grande (E)
     """
 
-    # 1 compteur par lettre de l'alphabet + l'espace, qu'ici on ne compte pas
-    freq={x: 0 for x in alphabet}             
+    # 1 compteur par lettre de l'alphabet
+    freq={x: 0 for x in alphabet}
+
+    # total = nombre de lettres dans le texte, non compris les espaces             
     total=0
     
     # pour chaque lettre de l'alphabet 
@@ -108,7 +113,11 @@ def frequence(texte):
     for k in alphabet:
         freq[k]=(freq[k]/total)*100
 
-    sorted_by_values = sorted(freq,key=lambda x:freq[x])
+    # trie le dict par valeurs
+    # REFERENCE: https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
+    sorted_by_values = dict(sorted(freq.items(), key=lambda item:item[1]))
+
+    logging.debug("Occurences des lettres dans le texte analysé : %s", sorted_by_values)
     return sorted_by_values  
 
 def bigramme(texte):
@@ -142,7 +151,8 @@ def bigramme(texte):
         if c != 0:
             for j, a in enumerate(alphabet_):
                 big[i][j] = big[i][j] / c    
-            
+
+    logging.debug("Initialisation des bigrammes terminées : %s", big)   
     return big
 
 
@@ -163,11 +173,19 @@ def indice(texte):
         total += texte.count(c)
     den = float(total)*(float(total)-1)
 
-    freq = frequence(texte) 
-    for cpt in freq:
-        sum = sum + float(cpt)*(float(cpt)-1)
+    freq: dict [str, float]
+    freq = frequence(texte)
 
-    return (sum/den)
+    for f in list(freq.values()):
+        # ici on retrouve le nb d'occurences de chaque lettre en multipliant 
+        # le frequence par le nombre total de caractères dans la chaine
+        occ=(f*total)/100
+        sum = sum + occ*(occ - 1) 
+
+    res = sum/den
+
+    logging.info("Indice de coincidence du texte (vaut environ 0.0746 en français) : %f", res)
+    return res
 
 
 def plausibilite(texte, big_ref = []):
@@ -190,17 +208,24 @@ def plausibilite(texte, big_ref = []):
 
         p += big[ix,iy] * mul
 
-    return (p/len(texte))
+    res = p/len(texte)
+
+    logging.info("Plausibilité du texte : %f", res)
+    return res
 
 
-def proposition_initiale(texte, freq_ref):
+def proposition(texte, freq_ref: dict):
     """
         Prend un texte chiffré en argument et renvoie une proposition de 
-        dechiffrement initiale basée sur la fréquence des caractères
+        dechiffrement basée sur la fréquence des caractères
     """
     
-    # tableau des lettres triées par occurence croissante
+    # dict des lettres triées par occurence croissante
     freq=frequence(texte)
+
+    # listes des lettres triées des dict
+    liste_ref = list(freq_ref.keys())
+    liste     = list(freq.keys())
 
     #copie du texte sur lequel on travaille
     res=[char for char in texte]
@@ -213,9 +238,9 @@ def proposition_initiale(texte, freq_ref):
     for c in res:
         # indice du caractère dans le tableau des fréqeunces
         if c != ' ' :
-            indice=freq.index(c)
+            indice=liste.index(c)
             # sub = caractère du même indice dans les fréquences de référence
-            sub=freq_ref[indice]
+            sub=liste_ref[indice]
             res[i]=sub
         i+=1
             
@@ -223,52 +248,117 @@ def proposition_initiale(texte, freq_ref):
     return res
 
 
+def echange(texte, i , j):
+    """
+        échange 2 éléments d'indice i et j dans une chaine
+    """
+    liste=list(texte)
+    liste[i], liste[j] = liste[j], liste[i]
+
+    return ''.join(liste)
+
+
+def Monte_Carlo(iteration, p0, freq_ref, big_ref, texte):
+    
+    sample=[]
+    for i in range(26):
+        sample.append(i)
+    
+    res = texte
+    p = p0
+
+    # TODO utiliser la distance à l'indice de plausibilité de référence plutôt qu'un nombre d'itérations fixe
+    compteur=0
+    while compteur < iteration :
+
+        # échange de 2 éléments au hasard
+        transposition=rd.sample(sample,2)
+        echange(res,transposition[0],transposition[1])
+        
+        essai = proposition(res, freq_ref)
+        p2 = plausibilite(essai, big_ref)
+        
+        # si la plausibilité est meilleure on garde le nouveau texte,
+        # sinon soit on garde le nouveau texte, soit on revient au texte précédent.
+        # Dépend du résultat d'un aléa:
+        # TODO expliquer l'aléa
+        if p<p2:
+            p=p2
+            res=essai
+        else:
+            f=rd.random()
+            a=max(abs(p),abs(p2))
+            b=min(abs(p),abs(p2))
+            
+            if a-b>0.5:
+                echange(res,transposition[0],transposition[1])
+            elif f>b/a:
+                p=p2
+                res=essai
+            else:
+                echange(res,transposition[0],transposition[1])
+                
+        compteur+=1      
+        logging.info("Proposition %d [%s]", compteur, res)
+
+
+
 # Point d'entrée du programme, utilisation depuis la ligne de commande:
 # python3 fr_bigramme.py
 if __name__ == '__main__':
     FORMAT = '%(asctime)-15s:%(levelname)s:%(message)s'
     logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.DEBUG)
+    logging.getLogger().setLevel(logging.INFO)
 
-    logging.info("Lecture des Misérables")
+    """
+        Le texte des Misérables est analysé pour en extraire:
+            - les fréquences de référence du français
+            - l'indice de coincidence
+            - le tableau des probabilités d'occurences des bigrammes en français
+    """
+    logging.info("Analyse des Misérables")
     fichier = open(r'Les-misérables.txt','r')
     livre = fichier.read()
     fichier.close
-
-    logging.info("Simplification des Misérables")
     baba = simplifie(livre)
-
     freq_ref = frequence(baba)
-    logging.debug("Occurences des lettres dans Les Misérables : %s", freq_ref)
-
-    #ic = indice(baba)
-    #logging.info("Indice de coincidence des Misérables (vaut environ 0.0746 en français) : %f", ic)
-
+    ic_ref = indice(baba)
     big_ref = bigramme(baba)
-    logging.debug("Initialisation des bigrammes des Misérables : %s", big_ref)
-    p0 = plausibilite(baba, big_ref)
-    logging.info("Vérification de la plausibilité des Misérables : %f", p0)
-
-    t1 = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-    baba = simplifie(t1)
-    #ic1 = indice(baba)
-    ic1=0
-    p1 = plausibilite(baba, big_ref)
-    logging.info("[IC1 = %f] [P1 = %f] ==> [%s]", ic1, p1, baba)
-
-
-    #print(Monte_Carlo('Gf yaom wf htmom tllaot daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'))
+    p = plausibilite(baba, big_ref)
     
-    t3 = "Thanks so much. This is a simple sentence you can use to thank someone"
-    baba = simplifie(t3)
-    #ic3 = indice(baba)
-    ic3=0
-    p3 = plausibilite(baba, big_ref)
-    logging.info("[IC3 = %f] [P3 = %f] ==> [%s]", ic3, p3, baba)
+    """
+        Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
+    """
+    expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
+    logging.info("Analyse de [%s]", expr_fr)
+    baba = simplifie(expr_fr)
+    ic = indice(baba)
+    p = plausibilite(baba, big_ref)
 
+    """
+        Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
+    """
+    expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
+    logging.info("Analyse de [%s]", expr_en)
+    baba = simplifie(expr_en)
+    ic = indice(baba)
+    p = plausibilite(baba, big_ref)
+
+    """
+        Déchiffrement d'un texte codé par substitution.
+
+        Une première proposition est éléborée à partir du pct d'occurence des
+        lettres dans le texte chiffré qui sont comparées au pct de ref. Une 
+        première substitution est appliquée.
+
+        Cette proposition initiale est ensuite utilisée comme base de l'algorithme
+        de Monte-Carlo que l'on va itérer un certain nombre de fois.
+    """
     enigme='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
+    logging.info("Déchiffrement de [%s]", enigme)
     baba = simplifie(enigme)
-    prop = proposition_initiale(baba, freq_ref)
+    prop = proposition(baba, freq_ref)
     p = plausibilite(prop, big_ref)
-    logging.info("Proposition initiale de plausibilité %d [%s]", p, prop)
+    logging.info("Proposition initiale [%s]", prop)
     
+    Monte_Carlo(10000, p, freq_ref, big_ref, prop)
