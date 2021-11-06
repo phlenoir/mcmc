@@ -2,9 +2,7 @@
 
 import logging
 import re
-from typing import Iterable
 import numpy as np
-import random as rd
 
 alphabet  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
@@ -335,7 +333,7 @@ if __name__ == '__main__':
         Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
     """
     expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-    logging.info("Analyse de [%s]", expr_fr)
+    print("Analyse de [%s]", expr_fr)
     baba = simplifie(expr_fr)
     ic = indice(baba)
     p = plausibilite(baba, big_ref)
