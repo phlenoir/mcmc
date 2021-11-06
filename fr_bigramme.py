@@ -266,9 +266,13 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
     best_text = str(texte_init)
     best_plau = plau_init
     
-    # TODO utiliser la distance à l'indice de plausibilité de référence plutôt qu'un nombre d'itérations fixe
     cpt=0
     while cpt < max_iter :
+
+        cpt+=1 
+        # sortie prématurée de la boucle en cas de résultat satisfaisant
+        if best_plau > break_plau:
+            break
 
         # échange de 2 éléments au hasard
         i = np.random.randint(0,26)
@@ -291,15 +295,12 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
                 best_plau = new_plau                
                 best_code = new_code
         else:
-            if ( (cur_plau / new_plau) * 0.010) > x :
+            if ( (cur_plau / new_plau) * 0.001) > x :
                 logging.info("(itération %d)saut de %f vers %f", cpt, cur_plau, new_plau)
                 cur_texte = new_texte
                 cur_plau  = new_plau
                 cur_code  = new_code
-
-        if best_plau > break_plau:
-            break
-        cpt+=1      
+     
         logging.debug("Proposition %d(%f) [%s]", cpt, cur_plau, cur_texte)
 
     logging.info("Proposition finale(%f) [%s]", best_plau, best_text)
