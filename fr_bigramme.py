@@ -2,10 +2,53 @@
 
 import logging
 import re
+import os
 import numpy as np
+import codecs
+import pickle
+
 
 alphabet  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+
+
+def charge_dico():
+    """
+        La première fois que cette fonction est appelée, elle transforme la 
+        liste des mots français en leurs versions simplifiés (lettres 
+        capitales, pas d'accents, etc.). Elle sauvegarde ensuite le résultat
+        dans un fichier fr_dico.dat. Les fois suivantes elle se contente de
+        lire le fichier .dat
+
+        Utilise la lib pickle qui peut sauvegarder des structures python 
+        directement, sans utiliser leur forme sérialisée (aka une string).
+        Permet ensuite de relire ces structures très rapidement.
+        -- 
+        retourne    : liste des mots simplifiés
+    """
+
+    fr_txt = "fr_dico.txt"  # fichier de références des mots français
+    fr_dat = "fr_dico.dat"  # fichier des mots français simplifiés
+    fr_dict = ""            # mots issus du fichier de référence
+    fr_dico = ""            # mots simplifiés
+
+    if os.path.isfile(fr_dat) :
+        with open(fr_dat, 'rb') as fichier:
+            fr_dico = pickle.load(fichier)   
+    else :
+        with codecs.open(fr_txt, "r", "utf-8") as lignes:
+            for ligne in  lignes:
+                fr_dict += ligne[:-1] + " "
+                
+        fr_dico = simplifie(fr_dict)
+        # Ajout des lettres et de qu'
+        fr_dico = ['QU'] + [chr(i) for i in range(65,91)] + fr_dico.split(" ")
+        pickle.dump(fr_dico, open( fr_dat, "wb" ))
+
+    cpt_mots = len(fr_dico)
+    logging.info("Chargement dictionnaire terminé (%d mots)", cpt_mots)
+    return fr_dico
+
 
 def char_to_id(c):
     """
@@ -93,7 +136,7 @@ def frequence(texte):
     """
         Compte le nombre d'occurences de chaque lettre dans un texte simplifié
         puis retourne un tableau de pourcentages sous la forme d'un dict trié
-        par valeur de la plus petite (W) à la plus grande (E)
+        par valeur de la plus petite (W en français) à la plus grande (E)
     """
 
     # 1 compteur par lettre de l'alphabet
@@ -123,8 +166,12 @@ def bigramme(texte):
         Calcule pour chaque bigramme trouvé dans un texte le nombre
         d'occurences divisé par le nombre total de bigrammes de la même 
         famille. Une famille de bigrammes rassemble tous les bigrammes
-        commençant par la même lettre. ON obtient ainsi un tableau normalisé
+        commençant par la même lettre. On obtient ainsi un tableau normalisé
         dont la somme des éléments de chaque ligne vaut 1.
+
+        texte       : texte dont on extrait les bigrammes
+        --
+        retourne    : fréquences des bigrammes du texte (tableau 2D)
     """   
 
     # matrice 26*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
@@ -212,10 +259,15 @@ def plausibilite(texte, big_ref = []):
     return plau
 
 
-def proposition(texte, code_ref: list):
+def dechiffrer(texte, clef: list):
     """
         Prend un texte chiffré en argument et renvoie une proposition de 
-        dechiffrement basée sur la fréquence des caractères
+        dechiffrement basée sur la fréquence des caractères.
+
+        texte       : texte à déchiffrer
+        clef        : clé de déchiffrement = permutations à appliquer 
+        --
+        retourne    : texte déchiffré (string)
     """
     
     # dict des lettres triées par occurence croissante
@@ -235,25 +287,51 @@ def proposition(texte, code_ref: list):
             # indice du caractère dans le tableau des fréqeunces
             indice = code.index(c)
             # sub = caractère du même indice dans les fréquences de référence
-            sub = code_ref[indice]
+            sub = clef[indice]
             res[i]=sub
         i+=1
 
     return ''.join(res)
 
+def verifie_mots(cur_texte):
+    lettres_fig=""
 
-def echange(texte, i , j):
+    return lettres_fig
+
+def echange(clef, lettres_fig):
     """
-        échange 2 éléments d'indice i et j dans une chaine
+        échange 2 lettres de la clef en vérifiant qu'elles ne sont pas figées
+
+        --
+        retourne    : nouvelle clef (string)
     """
-    liste=list(texte)
+    liste=list(clef) # conversion string en list
+    i, j = 0, 0
+
+    while True:
+        i = np.random.randint(0,26)
+        if liste[i] in lettres_fig:
+            continue
+        else:
+            break        
+
+    while True:
+        j = np.random.randint(0,26)
+        if liste[j] in lettres_fig or i == j :
+            continue
+        else:
+            break 
+
     liste[i], liste[j] = liste[j], liste[i]
-
     return ''.join(liste)
 
 
 def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
-
+    """
+    
+        --
+        retourne    : proposition de déchiffrement (string)
+    """
     break_plau = -1.7
 
     cur_code  = code_init
@@ -264,6 +342,7 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
     best_text = str(texte_init)
     best_plau = plau_init
     
+    mots=charge_dico()
     cpt=0
     while cpt < max_iter :
 
@@ -272,11 +351,12 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
         if best_plau > break_plau:
             break
 
-        # échange de 2 éléments au hasard
-        i = np.random.randint(0,26)
-        j = np.random.randint(0,26)       
-        new_code  = echange(cur_code, i, j)
-        new_texte = proposition(cur_texte, new_code)
+        # fige les lettres des mots qui semblent corrects
+        lettres_fig = verifie_mots(cur_texte)
+
+        # échange de 2 lettres de la clef       
+        new_code  = echange(cur_code, lettres_fig)
+        new_texte = dechiffrer(cur_texte, new_code)
         new_plau  = plausibilite(new_texte, big_ref)
         
         x = np.random.rand()
@@ -317,7 +397,7 @@ if __name__ == '__main__':
         Le texte des Misérables est analysé pour en extraire:
             - les fréquences de référence du français
             - l'indice de coincidence
-            - le tableau des probabilités d'occurences des bigrammes en français
+            - le tableau des fréquences des bigrammes en français
     """
     logging.info("Analyse des Misérables")
     fichier = open(r'Les-misérables.txt','r')
@@ -360,11 +440,11 @@ if __name__ == '__main__':
     enigme='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
     logging.info("Déchiffrement de [%s]", enigme)
     baba = simplifie(enigme)
-    prop = proposition(baba, list(freq_ref.keys()))
+    prop = dechiffrer(baba, list(freq_ref.keys()))
     p = plausibilite(prop, big_ref)
     logging.info("Proposition initiale [%s]", prop)
 
-    Monte_Carlo(200000, p, list(freq_ref.keys()), big_ref, prop)
+    Monte_Carlo(20, p, list(freq_ref.keys()), big_ref, prop)
 
     # enigme="On fait un petit essai mais sur un texte plus long car l'utilisation d un texte de trois mots ne semble pas fonctionner. Allons plus loin pour voir jusqu'où ça va"
     # logging.info("Déchiffrement de [%s]", enigme)
