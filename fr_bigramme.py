@@ -27,10 +27,10 @@ def charge_dico():
         retourne    : liste des mots simplifiés
     """
 
-    fr_txt = "fr_dico.txt"  # fichier de références des mots français
-    fr_dat = "fr_dico.dat"  # fichier des mots français simplifiés
-    fr_dict = ""            # mots issus du fichier de référence
-    fr_dico = ""            # mots simplifiés
+    fr_txt    = "fr_dico.txt"  # fichier de références des mots français
+    fr_dat    = "fr_dico.dat"  # fichier des mots français simplifiés
+    fr_dict   = ""             # mots issus du fichier de référence
+    fr_dico   : list           # liste de mots simplifiés du françcais
 
     if os.path.isfile(fr_dat) :
         with open(fr_dat, 'rb') as fichier:
@@ -293,10 +293,32 @@ def dechiffrer(texte, clef: list):
 
     return ''.join(res)
 
-def verifie_mots(cur_texte):
-    lettres_fig=""
 
-    return lettres_fig
+def verifie_mots(texte, fr_dico):
+    """
+        texte       : texte à analyser
+        --
+        retourne    : le nombre de mots justes
+        retourne    : la liste des lettres figées
+    """
+    lettres_fig=list("")
+
+    # compte le nombre de mots corrects
+    cpt  = 0
+    mots = texte.split(" ")
+    for mot in mots:
+        if mot in fr_dico and len(mot) > 1:
+            if len(mot) > 4:
+                for lettre in mot:
+                    if lettre not in lettres_fig:
+                        lettres_fig.append(lettre)
+            cpt +=1
+
+    if len(lettres_fig) > 0:
+        logging.info("Lettres figées %s", lettres_fig)
+
+    return cpt, list(lettres_fig)
+
 
 def echange(clef, lettres_fig):
     """
@@ -310,16 +332,12 @@ def echange(clef, lettres_fig):
 
     while True:
         i = np.random.randint(0,26)
-        if liste[i] in lettres_fig:
-            continue
-        else:
+        if liste[i] not in lettres_fig:
             break        
 
     while True:
         j = np.random.randint(0,26)
-        if liste[j] in lettres_fig or i == j :
-            continue
-        else:
+        if liste[j] not in lettres_fig and i != j :
             break 
 
     liste[i], liste[j] = liste[j], liste[i]
@@ -332,7 +350,8 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
         --
         retourne    : proposition de déchiffrement (string)
     """
-    break_plau = -1.7
+    break_plau      = -1.6      # max plausibilité calculée à partir de laquelle on estime le résultat juste
+    lettres_fig     = list("")  # liste des lettres figées
 
     cur_code  = code_init
     cur_texte = str(texte_init)
@@ -342,7 +361,7 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
     best_text = str(texte_init)
     best_plau = plau_init
     
-    mots=charge_dico()
+    fr_dico=charge_dico()
     cpt=0
     while cpt < max_iter :
 
@@ -350,9 +369,6 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
         # sortie prématurée de la boucle en cas de résultat satisfaisant
         if best_plau > break_plau:
             break
-
-        # fige les lettres des mots qui semblent corrects
-        lettres_fig = verifie_mots(cur_texte)
 
         # échange de 2 lettres de la clef       
         new_code  = echange(cur_code, lettres_fig)
@@ -372,6 +388,11 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
                 best_text = new_texte
                 best_plau = new_plau                
                 best_code = new_code
+                # fige les lettres des mots qui semblent corrects
+                mots_justes, lettres_fig = verifie_mots(cur_texte, fr_dico)
+                logging.info("%d mots justes", mots_justes)
+                if len(lettres_fig) >= 25:
+                    break
         else:
             if ( (cur_plau / new_plau) * 0.001) > x :
                 logging.info("(itération %d)saut de %f vers %f", cpt, cur_plau, new_plau)
@@ -437,16 +458,19 @@ if __name__ == '__main__':
         Cette proposition initiale est ensuite utilisée comme base de l'algorithme
         de Monte-Carlo que l'on va itérer un certain nombre de fois.
     """
-    enigme='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
+    #enigme ='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
+    enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RSA G SP ZY JY ? OS BAXBXPEZEXH EHRGYZ GS DEPBSAEZEXH, P'SKKASHRUEPPSHZ D'YH SZZAENYZ BSAOE JEHTZ-PEM. BSP RXH ! (XYE C'SE KSEZ KXAZ) 
+                JXEGS QYE PSHP PXYBRXH PSYAS ASJEA ZXH RENXYGXZ, XY DY OXEHP ZXH SAZ DY BLZUXH. SY BGSEPEA D'YH CXYA HXYP JXEA SYZXYA D'YH NXRV XY DY KGSRXH D'YH JEH, QY'EG PXEZ NGSHR XY AYNEP. ZXH JEG SOE"""
+
     logging.info("Déchiffrement de [%s]", enigme)
     baba = simplifie(enigme)
     prop = dechiffrer(baba, list(freq_ref.keys()))
     p = plausibilite(prop, big_ref)
     logging.info("Proposition initiale [%s]", prop)
 
-    Monte_Carlo(20, p, list(freq_ref.keys()), big_ref, prop)
+    Monte_Carlo(200000, p, list(freq_ref.keys()), big_ref, prop)
 
-    # enigme="On fait un petit essai mais sur un texte plus long car l'utilisation d un texte de trois mots ne semble pas fonctionner. Allons plus loin pour voir jusqu'où ça va"
+    # enigme="On fait un petit essai mais sur un texte plus long car l'utilisation d'un texte de trois mots ne semble pas fonctionner. Allons plus loin pour voir jusqu'où ça va"
     # logging.info("Déchiffrement de [%s]", enigme)
     # baba = simplifie(enigme)
     # p = plausibilite(baba, big_ref)
