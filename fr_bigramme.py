@@ -8,8 +8,10 @@ import codecs
 import pickle
 
 
-alphabet  = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-alphabet_ = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+alphabet    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+alphabet_   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+fr_dico     : list
+big_ref     : list([])
 
 
 def charge_dico():
@@ -27,10 +29,10 @@ def charge_dico():
         retourne    : liste des mots simplifiés
     """
 
-    fr_txt    = "fr_dico.txt"  # fichier de références des mots français
-    fr_dat    = "fr_dico.dat"  # fichier des mots français simplifiés
-    fr_dict   = ""             # mots issus du fichier de référence
-    fr_dico   : list           # liste de mots simplifiés du françcais
+    fr_txt    = "fr_dico.txt"   # fichier de références des mots français
+    fr_dat    = "fr_dico.dat"   # fichier des mots français simplifiés
+    fr_dict   = ""              # mots issus du fichier de référence
+    global fr_dico              # liste de mots simplifiés du françcais
 
     if os.path.isfile(fr_dat) :
         with open(fr_dat, 'rb') as fichier:
@@ -42,11 +44,11 @@ def charge_dico():
                 
         fr_dico = simplifie(fr_dict)
         # Ajout des lettres et de qu'
-        fr_dico = ['QU'] + [chr(i) for i in range(65,91)] + fr_dico.split(" ")
+        fr_dico = ['QU'] + ['A'] + ['C'] + ['L'] + ['M'] + ['N'] + ['O'] + ['S'] + ['T'] + ['Y'] +fr_dico.split(" ")
         pickle.dump(fr_dico, open( fr_dat, "wb" ))
 
     cpt_mots = len(fr_dico)
-    logging.info("Chargement dictionnaire terminé (%d mots)", cpt_mots)
+    logging.info("Chargement dictionnaire FR terminé (%d mots)", cpt_mots)
     return fr_dico
 
 
@@ -231,13 +233,16 @@ def indice(texte):
     return res
 
 
-def plausibilite(texte, big_ref = []):
+def plausibilite(texte):
     """
         Caclul de la plausibilité p d'un texte à partir du tableau des bigrammes
         issu de l'analyze des Misérables.
 
         La plausibilite c'est la somme des probabilités de rencontrer un bigramme 
         multipliée par le nombre de fois qu'on le rencontre.
+
+        La pausibilité est corrigé par un score issu du compte des lettres de
+        bons mots, les mots trouvés dans le dictionnaire français.
     """
     epsilon = 10e-6
 
@@ -258,71 +263,50 @@ def plausibilite(texte, big_ref = []):
     logging.debug("Plausibilité du texte : %f", plau)
     return plau
 
+def score(texte):
+    """
+        Evalue le score de la proposition de déchiffrement en repérant les mots
+        réels issus de la liste des mots français.
 
-def dechiffrer(texte, clef: list):
+        Le score est le rapport entre le nombre de lettres de vrais mots sur le 
+        nombre de lettres total du texte (sans les espaces)
+    """
+    lettres_ok  = 0
+    lettres_tot = 0
+    mots = texte.split(" ")
+    for mot in mots:
+        if mot in fr_dico:
+            lettres_ok += len(mot)
+        lettres_tot += len(mot)
+    return lettres_ok/lettres_tot    
+
+def dechiffrer(texte, code):
     """
         Prend un texte chiffré en argument et renvoie une proposition de 
         dechiffrement basée sur la fréquence des caractères.
 
         texte       : texte à déchiffrer
-        clef        : clé de déchiffrement = permutations à appliquer 
+        code        : clé de déchiffrement = permutations à appliquer 
         --
         retourne    : texte déchiffré (string)
     """
-    
-    # dict des lettres triées par occurence croissante
     freq = frequence(texte)
-    code = list(freq.keys())
+    fk   = list(freq.keys())
 
-    # copie du texte sur lequel on travaille
-    res = list(texte)
-
-    # chaque lettre du texte est remplacée par son équivalente dans le 
-    # tableau des fréquences de référence issues de Victor Hugo.
-
-    # i est l'indice global de res
-    i=0  
+    res  = list(texte)  # conversion en list
+    i=0                 # i est l'indice global de res
     for c in res:
         if c != ' ' :
-            # indice du caractère dans le tableau des fréqeunces
-            indice = code.index(c)
-            # sub = caractère du même indice dans les fréquences de référence
-            sub = clef[indice]
-            res[i]=sub
+            indice = fk.index(c)
+            res[i] = code[indice]
         i+=1
 
     return ''.join(res)
 
 
-def verifie_mots(texte, fr_dico):
+def echange(clef):
     """
-        texte       : texte à analyser
-        --
-        retourne    : le nombre de mots justes
-        retourne    : la liste des lettres figées
-    """
-    lettres_fig=list("")
-
-    # compte le nombre de mots corrects
-    cpt  = 0
-    mots = texte.split(" ")
-    for mot in mots:
-        if mot in fr_dico and len(mot) > 1:
-            if len(mot) > 4:
-                for lettre in mot:
-                    if lettre not in lettres_fig:
-                        lettres_fig.append(lettre)
-            cpt +=1
-
-    if len(lettres_fig) > 0:
-        logging.info("Lettres figées %s", lettres_fig)
-
-    return cpt, list(lettres_fig)
-
-
-def echange(clef, lettres_fig):
-    """
-        échange 2 lettres de la clef en vérifiant qu'elles ne sont pas figées
+        échange 2 lettres de la clef
 
         --
         retourne    : nouvelle clef (string)
@@ -330,38 +314,32 @@ def echange(clef, lettres_fig):
     liste=list(clef) # conversion string en list
     i, j = 0, 0
 
-    while True:
-        i = np.random.randint(0,26)
-        if liste[i] not in lettres_fig:
-            break        
-
-    while True:
+    i = np.random.randint(0,26)
+    while i == j:
         j = np.random.randint(0,26)
-        if liste[j] not in lettres_fig and i != j :
-            break 
 
     liste[i], liste[j] = liste[j], liste[i]
     return ''.join(liste)
 
 
-def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
+def Monte_Carlo(max_iter, texte_init):
     """
     
         --
         retourne    : proposition de déchiffrement (string)
     """
-    break_plau      = -1.6      # max plausibilité calculée à partir de laquelle on estime le résultat juste
-    lettres_fig     = list("")  # liste des lettres figées
+    break_plau  = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
+    chance      = 0.05          # chance d'accépter un code moins bon pour s'éloigner d'un possible maximum local
 
-    cur_code  = code_init
-    cur_texte = str(texte_init)
-    cur_plau  = plau_init
+    # la première substitution est effectuée sur la base des fréquences de référence
+    cur_code    = list(freq_ref.keys())
+    cur_texte   = dechiffrer(texte_init, cur_code)
+    cur_plau    = plausibilite(cur_texte)
 
-    best_code = code_init
-    best_text = str(texte_init)
-    best_plau = plau_init
+    best_code   = cur_code
+    best_text   = cur_texte
+    best_plau   = cur_plau
     
-    fr_dico=charge_dico()
     cpt=0
     while cpt < max_iter :
 
@@ -371,9 +349,9 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
             break
 
         # échange de 2 lettres de la clef       
-        new_code  = echange(cur_code, lettres_fig)
+        new_code  = echange(cur_code)
         new_texte = dechiffrer(cur_texte, new_code)
-        new_plau  = plausibilite(new_texte, big_ref)
+        new_plau  = plausibilite(new_texte)
         
         x = np.random.rand()
         # si la plausibilité est meilleure on garde le nouveau texte,
@@ -381,24 +359,28 @@ def Monte_Carlo(max_iter, plau_init, code_init, big_ref, texte_init):
         # Dépend du résultat d'un aléa:
         # TODO expliquer l'aléa
         if new_plau > cur_plau:
+            logging.debug("(itération %d) Augmentation plausibilité %f -> %f", cpt, cur_plau, new_plau)
             cur_plau  = new_plau
             cur_texte = new_texte
             cur_code  = new_code
             if new_plau > best_plau:
-                best_text = new_texte
-                best_plau = new_plau                
-                best_code = new_code
-                # fige les lettres des mots qui semblent corrects
-                mots_justes, lettres_fig = verifie_mots(cur_texte, fr_dico)
-                logging.info("%d mots justes", mots_justes)
-                if len(lettres_fig) >= 25:
-                    break
+                logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
+                best_text  = new_texte
+                best_plau  = new_plau                
+                best_code  = new_code
         else:
+            # le facteur chance est d'autant plus petit qu'on avance dans les itérations
+            #chance = chance * 0.99
+
+            # plus l'écart est important, moins on a de chance d'accepter la regression
+            # cur_score = score(cur_texte)
+            # p = np.exp((new_plau - cur_plau) - cur_score)
+
             if ( (cur_plau / new_plau) * 0.001) > x :
-                logging.info("(itération %d)saut de %f vers %f", cpt, cur_plau, new_plau)
+                logging.info("(itération %d) Régression plausibilité %f -> %f", cpt, cur_plau, new_plau)
                 cur_texte = new_texte
                 cur_plau  = new_plau
-                cur_code  = new_code
+                cur_code  = new_code                
      
         logging.debug("Proposition %d(%f) [%s]", cpt, cur_plau, cur_texte)
 
@@ -415,6 +397,11 @@ if __name__ == '__main__':
     logging.getLogger().setLevel(logging.INFO)
 
     """
+        Chargement des mots de la langue française
+    """
+    fr_dico     = charge_dico()
+
+    """
         Le texte des Misérables est analysé pour en extraire:
             - les fréquences de référence du français
             - l'indice de coincidence
@@ -425,10 +412,12 @@ if __name__ == '__main__':
     livre = fichier.read()
     fichier.close
     baba = simplifie(livre)
+    # chargement des fréquenes des lettres de référence
     freq_ref = frequence(baba)
-    ic_ref = indice(baba)
+    # Chargement des probabilités des bigrammes de référence
     big_ref = bigramme(baba)
-    p = plausibilite(baba, big_ref)
+    ic_ref = indice(baba)
+    p = plausibilite(baba)
     
     """
         Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
@@ -437,7 +426,7 @@ if __name__ == '__main__':
     print("Analyse de [%s]", expr_fr)
     baba = simplifie(expr_fr)
     ic = indice(baba)
-    p = plausibilite(baba, big_ref)
+    p = plausibilite(baba)
 
     """
         Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
@@ -446,7 +435,7 @@ if __name__ == '__main__':
     logging.info("Analyse de [%s]", expr_en)
     baba = simplifie(expr_en)
     ic = indice(baba)
-    p = plausibilite(baba, big_ref)
+    p = plausibilite(baba)
 
     """
         Déchiffrement d'un texte codé par substitution.
@@ -464,14 +453,4 @@ if __name__ == '__main__':
 
     logging.info("Déchiffrement de [%s]", enigme)
     baba = simplifie(enigme)
-    prop = dechiffrer(baba, list(freq_ref.keys()))
-    p = plausibilite(prop, big_ref)
-    logging.info("Proposition initiale [%s]", prop)
-
-    Monte_Carlo(200000, p, list(freq_ref.keys()), big_ref, prop)
-
-    # enigme="On fait un petit essai mais sur un texte plus long car l'utilisation d'un texte de trois mots ne semble pas fonctionner. Allons plus loin pour voir jusqu'où ça va"
-    # logging.info("Déchiffrement de [%s]", enigme)
-    # baba = simplifie(enigme)
-    # p = plausibilite(baba, big_ref)
-    # logging.info("P = %f [%s]", p, baba)
+    Monte_Carlo(20000, baba)
