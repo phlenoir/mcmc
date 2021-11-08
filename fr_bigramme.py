@@ -13,7 +13,6 @@ alphabet_   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
 fr_dico     : list
 big_ref     : list([])
 
-
 def charge_dico():
     """
         La première fois que cette fonction est appelée, elle transforme la 
@@ -159,8 +158,8 @@ def frequence(texte):
     # trie le dict par valeurs
     # REFERENCE: https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
     sorted_by_values = dict(sorted(freq.items(), key=lambda item:item[1]))
+    logging.debug("Lettres par fréquence d'apparition %s", sorted_by_values)
 
-    logging.debug("Occurences des lettres dans le texte analysé : %s", sorted_by_values)
     return sorted_by_values  
 
 def bigramme(texte):
@@ -290,49 +289,46 @@ def dechiffrer(texte, code):
         --
         retourne    : texte déchiffré (string)
     """
-    freq = frequence(texte)
-    fk   = list(freq.keys())
-
-    res  = list(texte)  # conversion en list
-    i=0                 # i est l'indice global de res
-    for c in res:
+    res = ""  
+    for c in texte:
         if c != ' ' :
-            indice = fk.index(c)
-            res[i] = code[indice]
-        i+=1
-
-    return ''.join(res)
+            indice = code.index(c)
+            res += fk_ref[indice]
+        else:
+            res += " "
+    return res
 
 
 def echange(clef):
     """
         échange 2 lettres de la clef
-
         --
-        retourne    : nouvelle clef (string)
+        retourne    : nouvelle clef
     """
-    liste=list(clef) # conversion string en list
-    i, j = 0, 0
-
     i = np.random.randint(0,26)
+    j = np.random.randint(0,26)
     while i == j:
         j = np.random.randint(0,26)
 
-    liste[i], liste[j] = liste[j], liste[i]
-    return ''.join(liste)
+    clef[i], clef[j] = clef[j], clef[i]
+    return clef
 
 
 def Monte_Carlo(max_iter, texte_init):
     """
     
         --
-        retourne    : proposition de déchiffrement (string)
+        retourne    : proposition de déchiffrement
     """
     break_plau  = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
     chance      = 0.05          # chance d'accépter un code moins bon pour s'éloigner d'un possible maximum local
 
     # la première substitution est effectuée sur la base des fréquences de référence
-    cur_code    = list(freq_ref.keys())
+    freq        = frequence(texte_init)
+    cur_code    = list(freq.keys())
+
+    logging.info("code init %s", cur_code)
+
     cur_texte   = dechiffrer(texte_init, cur_code)
     cur_plau    = plausibilite(cur_texte)
 
@@ -342,7 +338,6 @@ def Monte_Carlo(max_iter, texte_init):
     
     cpt=0
     while cpt < max_iter :
-
         cpt+=1 
         # sortie prématurée de la boucle en cas de résultat satisfaisant
         if best_plau > break_plau:
@@ -359,7 +354,6 @@ def Monte_Carlo(max_iter, texte_init):
         # Dépend du résultat d'un aléa:
         # TODO expliquer l'aléa
         if new_plau > cur_plau:
-            logging.debug("(itération %d) Augmentation plausibilité %f -> %f", cpt, cur_plau, new_plau)
             cur_plau  = new_plau
             cur_texte = new_texte
             cur_code  = new_code
@@ -388,69 +382,69 @@ def Monte_Carlo(max_iter, texte_init):
     return best_code
 
 
-
 # Point d'entrée du programme, utilisation depuis la ligne de commande:
 # python3 fr_bigramme.py
-if __name__ == '__main__':
-    FORMAT = '%(asctime)-15s:%(levelname)s:%(message)s'
-    logging.basicConfig(format=FORMAT)
-    logging.getLogger().setLevel(logging.INFO)
+FORMAT = '%(asctime)-15s:%(levelname)s:%(message)s'
+logging.basicConfig(format=FORMAT)
+logging.getLogger().setLevel(logging.INFO)
 
-    """
-        Chargement des mots de la langue française
-    """
-    fr_dico     = charge_dico()
+"""
+    Chargement des mots de la langue française
+"""
+fr_dico     = charge_dico()
 
-    """
-        Le texte des Misérables est analysé pour en extraire:
-            - les fréquences de référence du français
-            - l'indice de coincidence
-            - le tableau des fréquences des bigrammes en français
-    """
-    logging.info("Analyse des Misérables")
-    fichier = open(r'Les-misérables.txt','r')
-    livre = fichier.read()
-    fichier.close
-    baba = simplifie(livre)
-    # chargement des fréquenes des lettres de référence
-    freq_ref = frequence(baba)
-    # Chargement des probabilités des bigrammes de référence
-    big_ref = bigramme(baba)
-    ic_ref = indice(baba)
-    p = plausibilite(baba)
-    
-    """
-        Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
-    """
-    expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-    print("Analyse de [%s]", expr_fr)
-    baba = simplifie(expr_fr)
-    ic = indice(baba)
-    p = plausibilite(baba)
+"""
+    Le texte des Misérables est analysé pour en extraire:
+        - les fréquences de référence du français
+        - l'indice de coincidence
+        - le tableau des fréquences des bigrammes en français
+"""
+logging.info("Analyse des Misérables")
+fichier = open(r'Les-misérables.txt','r')
+livre = fichier.read()
+fichier.close
+baba = simplifie(livre)
+# chargement des fréquenes des lettres de référence
+fkv_ref = frequence(baba)
+fk_ref  = list(fkv_ref.keys())
 
-    """
-        Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
-    """
-    expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
-    logging.info("Analyse de [%s]", expr_en)
-    baba = simplifie(expr_en)
-    ic = indice(baba)
-    p = plausibilite(baba)
+# Chargement des probabilités des bigrammes de référence
+big_ref = bigramme(baba)
+ic_ref = indice(baba)
+p = plausibilite(baba)
 
-    """
-        Déchiffrement d'un texte codé par substitution.
+"""
+    Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
+"""
+expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
+print("Analyse de [%s]", expr_fr)
+baba = simplifie(expr_fr)
+ic = indice(baba)
+p = plausibilite(baba)
 
-        Une première proposition est éléborée à partir du pct d'occurence des
-        lettres dans le texte chiffré qui sont comparées au pct de ref. Une 
-        première substitution est appliquée.
+"""
+    Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
+"""
+expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
+logging.info("Analyse de [%s]", expr_en)
+baba = simplifie(expr_en)
+ic = indice(baba)
+p = plausibilite(baba)
 
-        Cette proposition initiale est ensuite utilisée comme base de l'algorithme
-        de Monte-Carlo que l'on va itérer un certain nombre de fois.
-    """
-    #enigme ='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
-    enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RSA G SP ZY JY ? OS BAXBXPEZEXH EHRGYZ GS DEPBSAEZEXH, P'SKKASHRUEPPSHZ D'YH SZZAENYZ BSAOE JEHTZ-PEM. BSP RXH ! (XYE C'SE KSEZ KXAZ) 
-                JXEGS QYE PSHP PXYBRXH PSYAS ASJEA ZXH RENXYGXZ, XY DY OXEHP ZXH SAZ DY BLZUXH. SY BGSEPEA D'YH CXYA HXYP JXEA SYZXYA D'YH NXRV XY DY KGSRXH D'YH JEH, QY'EG PXEZ NGSHR XY AYNEP. ZXH JEG SOE"""
+"""
+    Déchiffrement d'un texte codé par substitution.
 
-    logging.info("Déchiffrement de [%s]", enigme)
-    baba = simplifie(enigme)
-    Monte_Carlo(20000, baba)
+    Une première proposition est éléborée à partir du pct d'occurence des
+    lettres dans le texte chiffré qui sont comparées au pct de ref. Une 
+    première substitution est appliquée.
+
+    Cette proposition initiale est ensuite utilisée comme base de l'algorithme
+    de Monte-Carlo que l'on va itérer un certain nombre de fois.
+"""
+#enigme ='Gf yaom wf htmom tllao daol lwk wf mtvmt hswl sgfu eak s wmosolamogf r wf mtvmt rt mkgol dgml ft ltdzst hal ygfemogfftk assgfl hswl sgfu hgwk xgok pwljw gw ea xa'
+enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RSA G SP ZY JY ? OS BAXBXPEZEXH EHRGYZ GS DEPBSAEZEXH, P'SKKASHRUEPPSHZ D'YH SZZAENYZ BSAOE JEHTZ-PEM. BSP RXH ! (XYE C'SE KSEZ KXAZ) 
+            JXEGS QYE PSHP PXYBRXH PSYAS ASJEA ZXH RENXYGXZ, XY DY OXEHP ZXH SAZ DY BLZUXH. SY BGSEPEA D'YH CXYA HXYP JXEA SYZXYA D'YH NXRV XY DY KGSRXH D'YH JEH, QY'EG PXEZ NGSHR XY AYNEP. ZXH JEG SOE"""
+
+logging.info("Déchiffrement de [%s]", enigme)
+baba = simplifie(enigme)
+Monte_Carlo(10000, baba)
