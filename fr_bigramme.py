@@ -65,6 +65,18 @@ def id_to_char(i):
     """
     return " " if i==26 else chr(i+65)
 
+def nouv_alphabet(code):
+    """
+        Créer un nouvel alphabet à partir d'un code, i.e. une nouvelle liste des 
+        lettres de l'alphabet à subsituer
+        --
+	    retourne    : un dict dont les clés sont les lettres de l'alphabet et les valeurs 
+                    les lettres issues du code
+	"""
+    res = {}
+    for i, c in enumerate(alphabet):
+        res[c] = code[i]
+    return res
 
 def simplifie(texte):
     """
@@ -239,26 +251,21 @@ def plausibilite(texte):
 
         La plausibilite c'est la somme des probabilités de rencontrer un bigramme 
         multipliée par le nombre de fois qu'on le rencontre.
-
-        La pausibilité est corrigé par un score issu du compte des lettres de
-        bons mots, les mots trouvés dans le dictionnaire français.
     """
-    epsilon = 10e-6
-
+    epsilon = 10e-7
+    plau = 0
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la propabilité (+ epsilon pour traiter les nuls)
-    big=np.zeros((26, 27))
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
         if current != ' ' :
             i = char_to_id(current)
             j = char_to_id(next_)
-            big[i][j]+=np.log(big_ref[i,j] + epsilon)
+            plau+=np.log(big_ref[i,j] + epsilon)
         current = next_
 
-    plau=np.sum(big)/len(texte)
-
+    plau=plau/len(texte)
     logging.debug("Plausibilité du texte : %f", plau)
     return plau
 
@@ -289,14 +296,15 @@ def dechiffrer(texte, code):
         --
         retourne    : texte déchiffré (string)
     """
-    res = ""  
+    alpha = nouv_alphabet(code)
+    res = ""
     for c in texte:
         if c != ' ' :
-            indice = code.index(c)
-            res += fk_ref[indice]
+            res += alpha[c]
         else:
             res += " "
     return res
+
 
 
 def echange(clef):
@@ -314,7 +322,7 @@ def echange(clef):
     return clef
 
 
-def Monte_Carlo(max_iter, texte_init):
+def metropolis(max_iter, texte_init):
     """
     
         --
@@ -323,9 +331,15 @@ def Monte_Carlo(max_iter, texte_init):
     break_plau  = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
     chance      = 0.05          # chance d'accépter un code moins bon pour s'éloigner d'un possible maximum local
 
-    # la première substitution est effectuée sur la base des fréquences de référence
-    freq        = frequence(texte_init)
-    cur_code    = list(freq.keys())
+    # le premier code est calculé sur la base des fréquences de référence
+    global fk_ref 
+    freq = frequence(texte_init)
+    fk  = list(freq.keys())
+    cur_code = list(range(0,26))
+    for i, c in enumerate(fk):
+        ind = char_to_id(c)
+        cur_code[ind] = fk_ref[i]
+        logging.debug("remplace %s (%d) par %s", c, ind ,fk_ref[i] )
 
     logging.info("code init %s", cur_code)
 
@@ -366,11 +380,12 @@ def Monte_Carlo(max_iter, texte_init):
             # le facteur chance est d'autant plus petit qu'on avance dans les itérations
             #chance = chance * 0.99
 
-            # plus l'écart est important, moins on a de chance d'accepter la regression
+            # plus l'écart est important, moins on a de chance d'accepter
             # cur_score = score(cur_texte)
             # p = np.exp((new_plau - cur_plau) - cur_score)
-
-            if ( (cur_plau / new_plau) * 0.001) > x :
+            logging.info("x %f, coeff %f", x, np.exp(new_plau - cur_plau))
+            if (x < np.exp(new_plau - cur_plau)):
+            #if ( (cur_plau / new_plau) * 0.001) > x :
                 logging.info("(itération %d) Régression plausibilité %f -> %f", cpt, cur_plau, new_plau)
                 cur_texte = new_texte
                 cur_plau  = new_plau
@@ -447,4 +462,4 @@ enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RS
 
 logging.info("Déchiffrement de [%s]", enigme)
 baba = simplifie(enigme)
-Monte_Carlo(10000, baba)
+metropolis(100, baba)
