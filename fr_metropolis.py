@@ -7,12 +7,12 @@ import numpy as np
 import random as rd
 import codecs
 import pickle
-
+import matplotlib.pyplot as plt
 
 alphabet    = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 alphabet_   = "ABCDEFGHIJKLMNOPQRSTUVWXYZ "
+fr_bigrams  = np.zeros((27, 27))
 fr_dico     : list
-big_ref     : list([])
 
 def charge_dico():
     """
@@ -74,6 +74,7 @@ def nouv_alphabet(code):
 	    retourne    : un dict dont les clés sont les lettres de l'alphabet et les valeurs 
                     les lettres issues du code
 	"""
+    global alphabet
     res = {}
     for i, c in enumerate(alphabet):
         res[c] = code[i]
@@ -92,6 +93,7 @@ def simplifie(texte):
         https://unicode-table.com/fr/#basic-latin
 
     """
+    global alphabet_
 
     # Substitution des "e dans l'o", minuscules et majuscules
     #   utilisation de la lib re = regular expression
@@ -152,6 +154,7 @@ def frequence(texte):
         puis retourne un tableau de pourcentages sous la forme d'un dict trié
         par valeur de la plus petite (W en français) à la plus grande (E)
     """
+    global alphabet
 
     # 1 compteur par lettre de l'alphabet
     freq={x: 0 for x in alphabet}
@@ -188,28 +191,27 @@ def bigramme(texte):
         retourne    : fréquences des bigrammes du texte (tableau 2D)
     """   
 
-    # matrice 26*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
-    big=np.zeros((26, 27))       
-    cpt=np.zeros((26))
-    
+    # matrice 27*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
+    big=np.zeros((27, 27))       
+    cpt=np.zeros((27))
+
     # parcourt du text en lisant un caractère (current) et le suivant (next_)
     # on découpe ainsi le texte en bigrammes
-    # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau big
-    # et le compteur de la famille
+    # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau
+    # et le compteur de la famille pour normaliser les résultats à la fin
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        if current != ' ' :
-            i = char_to_id(current)
-            j = char_to_id(next_)
-            big[i][j]+=1
-            cpt[i]+=1
+        i = char_to_id(current)
+        j = char_to_id(next_)
+        big[i][j]+=1
+        cpt[i]+=1
         current = next_
-
-    for i in range(26):
+    
+    for i in range(27):
         if cpt[i] != 0:
             for j in range(27):
-                big[i][j] = big[i][j] / cpt[i]    
+                big[i][j] = big[i][j] / cpt[i]
 
     logging.debug("Initialisation des bigrammes terminées : %s", big)   
     return big
@@ -225,6 +227,7 @@ def indice(texte):
 
         REFERENCE https://fr.wikipedia.org/wiki/Indice_de_co%C3%AFncidence
     """
+    global alphabet
     sum = 0.0
     total = 0
 
@@ -255,21 +258,20 @@ def plausibilite(texte):
 
         Dans l'algorithme de MH, plausibilite = f, fonction proportionnelle à pi
     """
-    epsilon = 10e-7
+    global fr_bigrams
+    epsilon = 10e-6
     plau = 0
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la propabilité (+ epsilon pour traiter les nuls)
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        if current != ' ' :
-            i = char_to_id(current)
-            j = char_to_id(next_)
-            plau+=np.log(big_ref[i,j] + epsilon)
+        i = char_to_id(current)
+        j = char_to_id(next_)
+        plau+=np.log(fr_bigrams[i,j] + epsilon)
         current = next_
 
     plau=plau/len(texte)
-    logging.debug("Plausibilité du texte : %f", plau)
     return plau
 
 
@@ -281,6 +283,7 @@ def score(texte):
         Le score est le rapport entre le nombre de lettres de vrais mots sur le 
         nombre de lettres total du texte (sans les espaces)
     """
+    global fr_dico
     lettres_ok  = 0
     lettres_tot = 0
     mots = texte.split(" ")
@@ -315,6 +318,8 @@ def chiffre(texte):
     """
         Chiffrement d'un texte avec un code tiré au hasard
     """
+    global alphabet
+
     code = rd.sample(alphabet, 26)
     simple = simplifie(texte)
     return dechiffre(simple, code)
@@ -332,12 +337,13 @@ def echange(clef):
     i = np.random.randint(0,26)
     j = np.random.randint(0,26)
 
-    a,b = rd.choices(range(0,26), weights=list(fkv_ref.values()), k=2)
+    # tirage pondéré par la place de la lettre dans le tableau des fréquences
+    #a,b = rd.choices(range(0,26), weights=list(fkv_ref.values()), k=2)
     while i == j:
         j = np.random.randint(0,26)
 
-    #clef[i], clef[j] = clef[j], clef[i]
-    clef[a], clef[b] = clef[b], clef[a]
+    clef[i], clef[j] = clef[j], clef[i]
+    #clef[a], clef[b] = clef[b], clef[a]
     return clef
 
 def acceptation(cur, new):
@@ -346,17 +352,29 @@ def acceptation(cur, new):
             Si x <= alpha, alors retourne True accepter (donc si alpha > 1}, on accepte nécessairement)
             Si x > alpha, alors retourne False
         --
-        REFERENCE : https://fr.wikipedia.org/wiki/Algorithme_de_Metropolis-Hastings
+        
     """
     x = rd.random()
-    #if x <= np.exp(new - cur) :
-    if x <=  (cur / new) * 0.001 :
+    if x <= np.exp(new - cur) :
         return True
     return False
 
 def metropolis(max_iter, texte_init):
     """
-    
+        Application de l'algorithme de Metropolis-Hastings.
+
+        L'algorithme peut être interprété intuitivement de la manière suivante: à chaque itération, 
+        on tente de se déplacer dans l'espace des états possibles (codes), le déplacement peut être 
+        accepté ou rejeté. Le taux d'acceptation alpha indique à quel point le nouvel état est probable 
+        (plausibilité) étant donné l'état actuel, et selon la distribution pi (les bigrammes). 
+        Si l'on cherche à se déplacer vers un état plus probable que l'état actuel, le déplacement est 
+        toujours accepté. Cependant, si l'on cherche à se déplacer vers un état moins probable que l'état 
+        actuel, alors le déplacement peut être rejeté et le rejet est d'autant plus probable que la chute 
+        de densité de probabilité est élevée. Par conséquent, la marche tend à visiter préférentiellement 
+        les régions de l'espace des états où la densité pi est élevée mais visite occasionnellement des 
+        régions de moindre densité.
+
+        REFERENCE : https://fr.wikipedia.org/wiki/Algorithme_de_Metropolis-Hastings
         --
         retourne    : proposition de déchiffrement
     """
@@ -397,17 +415,24 @@ def metropolis(max_iter, texte_init):
         # new_plau  = 4*score_mots + plausibilite(new_texte)
         new_plau  = plausibilite(new_texte)
 
-        if new_plau > best_plau:
-            logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
-            best_text  = new_texte
-            best_plau  = new_plau                
-            best_code  = new_code     
-
-        # Metropolis-Hastings (cf fonction d'acceptation)
-        if acceptation(new_plau, cur_plau):
-            cur_plau  = new_plau
-            cur_texte = new_texte
-            cur_code  = new_code
+        if new_plau > cur_plau:
+            cur_texte  = new_texte
+            cur_plau  = new_plau                
+            cur_code  = new_code   
+            if new_plau > best_plau:
+                logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
+                best_text  = new_texte
+                best_plau  = new_plau                
+                best_code  = new_code     
+        else:
+            # fonction d'acceptation de Metropolis-Hastings
+            x = rd.random()
+            if x <=  (cur_plau / new_plau) * 0.005 : 
+            #if x <= np.exp(new_plau - cur_plau) :
+                logging.debug("(itération %d) Dégradation plausibilité %f", cpt, new_plau)
+                cur_texte  = new_texte
+                cur_plau  = new_plau                
+                cur_code  = new_code  
 
     return best_code, best_plau, best_text
 
@@ -430,7 +455,8 @@ fr_dico     = charge_dico()
         - le tableau des fréquences des bigrammes en français
 """
 logging.info("Analyse des Misérables")
-fichier = open(r'Les-misérables.txt','r')
+#fichier = open(r'Les-misérables.txt','r')
+fichier = open(r'swann.txt','r')
 livre = fichier.read()
 fichier.close
 baba = simplifie(livre)
@@ -439,16 +465,32 @@ fkv_ref = frequence(baba)
 fk_ref  = list(fkv_ref.keys())
 
 # Chargement des probabilités des bigrammes de référence
-big_ref = bigramme(baba)
+fr_bigrams = bigramme(baba)
 ic_ref = indice(baba)
 p = plausibilite(baba)
 logging.info("Plausibilité des Misérables (p=%f)", p)
+
+# Génération du graphe de densité de probabilités
+x_labels=list(alphabet_)
+x_labels[26]='_'
+y_labels=list(alphabet_)
+y_labels[26]='_'
+fig, ax = plt.subplots()
+ax.pcolormesh(np.log(fr_bigrams))
+ax.axis('tight')
+plt.xticks(range(len(x_labels)), x_labels)
+plt.yticks(range(len(y_labels)), y_labels)
+plt.savefig('fr_bigrams.png')
+
+for i, c1 in enumerate(alphabet):
+    for j, c2 in enumerate(alphabet_):
+        logging.debug("[%s %s] = %f", c1, c2, fr_bigrams[i][j])   
 
 """
     Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
 """
 expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-print("Analyse de [%s]", expr_fr)
+logging.info("Analyse de [%s]", expr_fr)
 baba = simplifie(expr_fr)
 ic = indice(baba)
 p = plausibilite(baba)
