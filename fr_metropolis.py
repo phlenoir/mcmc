@@ -213,7 +213,7 @@ def bigramme(texte):
             for j in range(27):
                 big[i][j] = big[i][j] / cpt[i]
 
-    logging.debug("Initialisation des bigrammes terminées : %s", big)   
+    logging.info("Initialisation des bigrammes terminées : %s", big)   
     return big
 
 
@@ -259,7 +259,7 @@ def plausibilite(texte):
         Dans l'algorithme de MH, plausibilite = f, fonction proportionnelle à pi
     """
     global fr_bigrams
-    epsilon = 10e-6
+    epsilon = 10e-7
     plau = 0
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la propabilité (+ epsilon pour traiter les nuls)
@@ -383,13 +383,19 @@ def metropolis(max_iter, texte_init):
 
     # le premier code est calculé sur la base des fréquences de référence
     global fk_ref 
+    logging.info("Ref %s", fk_ref)
     freq = frequence(texte_init)
     fk  = list(freq.keys())
+    logging.info("Tex %s", fk)
     cur_code = list(range(0,26))
-    for i, c in enumerate(fk):
+
+    i=0
+    for c in fk:
         ind = char_to_id(c)
         cur_code[ind] = fk_ref[i]
         logging.debug("remplace %s (%d) par %s", c, ind ,fk_ref[i] )
+        i+=1
+
     cur_texte = dechiffre(texte_init, cur_code)
     # score_mots = score(cur_texte)
     # cur_plau = 4*score_mots + plausibilite(cur_texte)
@@ -429,7 +435,7 @@ def metropolis(max_iter, texte_init):
             x = rd.random()
             if x <=  (cur_plau / new_plau) * 0.005 : 
             #if x <= np.exp(new_plau - cur_plau) :
-                logging.debug("(itération %d) Dégradation plausibilité %f", cpt, new_plau)
+                logging.info("(itération %d) Dégradation plausibilité %f", cpt, new_plau)
                 cur_texte  = new_texte
                 cur_plau  = new_plau                
                 cur_code  = new_code  
@@ -455,8 +461,8 @@ fr_dico     = charge_dico()
         - le tableau des fréquences des bigrammes en français
 """
 logging.info("Analyse des Misérables")
-#fichier = open(r'Les-misérables.txt','r')
-fichier = open(r'swann.txt','r')
+fichier = open(r'Les-misérables.txt','r')
+#fichier = open(r'swann.txt','r')
 livre = fichier.read()
 fichier.close
 baba = simplifie(livre)
@@ -476,7 +482,7 @@ x_labels[26]='_'
 y_labels=list(alphabet_)
 y_labels[26]='_'
 fig, ax = plt.subplots()
-ax.pcolormesh(np.log(fr_bigrams))
+ax.pcolormesh((fr_bigrams))
 ax.axis('tight')
 plt.xticks(range(len(x_labels)), x_labels)
 plt.yticks(range(len(y_labels)), y_labels)
@@ -516,9 +522,17 @@ emile = """La nature veut que les enfants soient enfants avant que d’être hom
             pieds de haut, que du jugement à dix ans. En effet, à quoi lui servirait la raison à cet âge ? 
             Elle est le frein de la force, et l’enfant n’a pas besoin de ce frein."""
 
-enigme = chiffre(emile)
+#enigme = chiffre(emile)
+enigme = """DN ANTRIE QERT VRE DES EAMNATS SLUEAT EAMNATS NQNAT VRE O ETIE JLFFES SU ALRS QLRDLAS CEIQEITUI 
+            PET LIOIE ALRS CILORUILAS OES MIRUTS CIEPLPES VRU A NRILAT AU FNTRIUTE AU SNQERI ET AE TNIOEILAT 
+            CNS N SE PLIILFCIE ALRS NRILAS OE HERAES OLPTERIS ET OE QUERB EAMNATS D EAMNAPE N OES FNAUEIES OE 
+            QLUI OE CEASEI OE SEATUI VRU DRU SLAT CILCIES IUEA A EST FLUAS SEASE VRE O Y QLRDLUI SRXSTUTREI 
+            DES ALTIES ET H NUFEINUS NRTNAT EBUGEI VR EAMNAT ERT PUAV CUEOS OE JNRT VRE OR HRGEFEAT N OUB 
+            NAS EA EMMET N VRLU DRU SEIQUINUT DN INUSLA N PET NGE EDDE EST DE MIEUA OE DN MLIPE ET D EAMNAT 
+            A N CNS XESLUA OE PE MIEUA"""
+enigme = simplifie(enigme)
 logging.info("---- Déchiffrement d'un extrait d'Emile de JJ Rousseau")
-code, p, solution = metropolis(100000, enigme)
+code, p, solution = metropolis(10, enigme)
 logging.info("Meilleur code trouvé (p=%f) %s", p, code)
 logging.info("Proposition finale [%s]", solution)
 
