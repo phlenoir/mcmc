@@ -66,19 +66,6 @@ def id_to_char(i):
     """
     return " " if i==26 else chr(i+65)
 
-def nouv_alphabet(code):
-    """
-        Créer un nouvel alphabet à partir d'un code, i.e. une nouvelle liste des 
-        lettres de l'alphabet à subsituer
-        --
-	    retourne    : un dict dont les clés sont les lettres de l'alphabet et les valeurs 
-                    les lettres issues du code
-	"""
-    global alphabet
-    res = {}
-    for i, c in enumerate(alphabet):
-        res[c] = code[i]
-    return res
 
 def simplifie(texte):
     """
@@ -178,6 +165,7 @@ def frequence(texte):
 
     return sorted_by_values  
 
+
 def bigramme(texte):
     """
         Calcule pour chaque bigramme trouvé dans un texte le nombre
@@ -213,7 +201,7 @@ def bigramme(texte):
             for j in range(27):
                 big[i][j] = big[i][j] / cpt[i]
 
-    logging.info("Initialisation des bigrammes terminées : %s", big)   
+    logging.debug("Initialisation des bigrammes terminées : %s", big)   
     return big
 
 
@@ -259,21 +247,35 @@ def plausibilite(texte):
         Dans l'algorithme de MH, plausibilite = f, fonction proportionnelle à pi
     """
     global fr_bigrams
-    epsilon = 10e-7
+    epsilon = 10e-6
     plau = 0
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la propabilité (+ epsilon pour traiter les nuls)
+    # s=list(texte)
+    # current = s[0]
+    # for next_ in s[1:] :
+    #     i = char_to_id(current)
+    #     j = char_to_id(next_)
+    #     #logging.info("bigramme %s%s (%f)", current, next_, np.log(fr_bigrams[i,j] + epsilon))
+    #     plau+=np.log(fr_bigrams[i,j] + epsilon)
+    #     current = next_
+
+    # plau=plau/len(texte)
+    # return plau
+
+    big=np.zeros((26, 27))
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        i = char_to_id(current)
-        j = char_to_id(next_)
-        plau+=np.log(fr_bigrams[i,j] + epsilon)
+        if current != ' ' :
+            i = char_to_id(current)
+            j = char_to_id(next_)
+            big[i][j]+=np.log(fr_bigrams[i][j] + epsilon)
         current = next_
 
-    plau=plau/len(texte)
-    return plau
+    plau=np.sum(big)/len(texte)
 
+    return plau
 
 def score(texte):
     """
@@ -304,11 +306,12 @@ def dechiffre(texte, code):
         --
         retourne    : texte déchiffré (string)
     """
-    alpha = nouv_alphabet(code)
+    #logging.info("Nouveau code                %s", code)
     res = ""
     for c in texte:
         if c != ' ' :
-            res += alpha[c]
+            i=code.index(c)
+            res += fk_ref[i]
         else:
             res += " "
     return res
@@ -342,9 +345,11 @@ def echange(clef):
     while i == j:
         j = np.random.randint(0,26)
 
+    logging.debug("Echange %d(%s) et %d(%s)", i, clef[i], j, clef[j])
     clef[i], clef[j] = clef[j], clef[i]
     #clef[a], clef[b] = clef[b], clef[a]
     return clef
+
 
 def acceptation(cur, new):
     """
@@ -379,23 +384,11 @@ def metropolis(max_iter, texte_init):
         retourne    : proposition de déchiffrement
     """
     break_plau = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
-    score_mots = 0
+    score_mots = 0             # score calculé du message décodé (c.f. fonction score)
 
-    # le premier code est calculé sur la base des fréquences de référence
-    global fk_ref 
-    logging.info("Ref %s", fk_ref)
+    # le premier code est calculé sur la base des fréquences des lettres dans le message codé
     freq = frequence(texte_init)
-    fk  = list(freq.keys())
-    logging.info("Tex %s", fk)
-    cur_code = list(range(0,26))
-
-    i=0
-    for c in fk:
-        ind = char_to_id(c)
-        cur_code[ind] = fk_ref[i]
-        logging.debug("remplace %s (%d) par %s", c, ind ,fk_ref[i] )
-        i+=1
-
+    cur_code  = list(freq.keys())
     cur_texte = dechiffre(texte_init, cur_code)
     # score_mots = score(cur_texte)
     # cur_plau = 4*score_mots + plausibilite(cur_texte)
@@ -405,7 +398,7 @@ def metropolis(max_iter, texte_init):
 
     best_text  = cur_texte
     best_plau  = cur_plau                
-    best_code  = cur_code
+    best_code  = cur_code.copy()
 
     cpt=0
     while cpt < max_iter :
@@ -422,23 +415,23 @@ def metropolis(max_iter, texte_init):
         new_plau  = plausibilite(new_texte)
 
         if new_plau > cur_plau:
-            cur_texte  = new_texte
+            cur_texte = new_texte
             cur_plau  = new_plau                
-            cur_code  = new_code   
+            cur_code  = new_code.copy()   
             if new_plau > best_plau:
                 logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
                 best_text  = new_texte
                 best_plau  = new_plau                
-                best_code  = new_code     
+                best_code  = new_code.copy()     
         else:
             # fonction d'acceptation de Metropolis-Hastings
             x = rd.random()
             if x <=  (cur_plau / new_plau) * 0.005 : 
             #if x <= np.exp(new_plau - cur_plau) :
                 logging.info("(itération %d) Dégradation plausibilité %f", cpt, new_plau)
-                cur_texte  = new_texte
+                cur_texte = new_texte
                 cur_plau  = new_plau                
-                cur_code  = new_code  
+                cur_code  = new_code.copy()  
 
     return best_code, best_plau, best_text
 
@@ -473,8 +466,8 @@ fk_ref  = list(fkv_ref.keys())
 # Chargement des probabilités des bigrammes de référence
 fr_bigrams = bigramme(baba)
 ic_ref = indice(baba)
-p = plausibilite(baba)
-logging.info("Plausibilité des Misérables (p=%f)", p)
+# p = plausibilite(baba)
+# logging.info("Plausibilité des Misérables (p=%f)", p)
 
 # Génération du graphe de densité de probabilités
 x_labels=list(alphabet_)
@@ -495,21 +488,21 @@ for i, c1 in enumerate(alphabet):
 """
     Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
 """
-expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-logging.info("Analyse de [%s]", expr_fr)
-baba = simplifie(expr_fr)
-ic = indice(baba)
-p = plausibilite(baba)
-logging.info("Plausibilité de expr_fr (p=%f)", p)
+# expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
+# logging.info("Analyse de [%s]", expr_fr)
+# baba = simplifie(expr_fr)
+# ic = indice(baba)
+# p = plausibilite(baba)
+# logging.info("Plausibilité de expr_fr (p=%f)", p)
 """
     Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
 """
-expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
-logging.info("Analyse de [%s]", expr_en)
-baba = simplifie(expr_en)
-ic = indice(baba)
-p = plausibilite(baba)
-logging.info("Plausibilité de expr_en (p=%f)", p)
+# expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
+# logging.info("Analyse de [%s]", expr_en)
+# baba = simplifie(expr_en)
+# ic = indice(baba)
+# p = plausibilite(baba)
+# logging.info("Plausibilité de expr_en (p=%f)", p)
 
 """
     Déchiffrement d'un texte codé par substitution.
@@ -532,8 +525,9 @@ enigme = """DN ANTRIE QERT VRE DES EAMNATS SLUEAT EAMNATS NQNAT VRE O ETIE JLFFE
             A N CNS XESLUA OE PE MIEUA"""
 enigme = simplifie(enigme)
 logging.info("---- Déchiffrement d'un extrait d'Emile de JJ Rousseau")
-code, p, solution = metropolis(10, enigme)
-logging.info("Meilleur code trouvé (p=%f) %s", p, code)
+code, p, solution = metropolis(10000, enigme)
+logging.info("Freq Ref                    %s", fk_ref)
+logging.info("Meilleur code (p=%f) %s", p, code)
 logging.info("Proposition finale [%s]", solution)
 
 # enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RSA G SP ZY JY ? OS BAXBXPEZEXH 
