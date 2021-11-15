@@ -179,14 +179,14 @@ def bigramme(texte):
         retourne    : fréquences des bigrammes du texte (tableau 2D)
     """   
 
-    # matrice 27*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
+    # matrice ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
     big=np.zeros((27, 27))       
     cpt=np.zeros((27))
-
+    
     # parcourt du text en lisant un caractère (current) et le suivant (next_)
     # on découpe ainsi le texte en bigrammes
-    # pour cahque bigramme rencontré on incrémente le compteur associé dans le tableau
-    # et le compteur de la famille pour normaliser les résultats à la fin
+    # pour chaque bigramme rencontré on incrémente le compteur associé dans le tableau big
+    # et le compteur de la famille
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
@@ -195,13 +195,12 @@ def bigramme(texte):
         big[i][j]+=1
         cpt[i]+=1
         current = next_
-    
+
     for i in range(27):
         if cpt[i] != 0:
             for j in range(27):
-                big[i][j] = big[i][j] / cpt[i]
-
-    logging.debug("Initialisation des bigrammes terminées : %s", big)   
+                big[i][j] = big[i][j] / cpt[i]    
+                
     return big
 
 
@@ -247,30 +246,19 @@ def plausibilite(texte):
         Dans l'algorithme de MH, plausibilite = f, fonction proportionnelle à pi
     """
     global fr_bigrams
-    epsilon = 10e-6
-    plau = 0
+
+    #permet d'éviter de prendre log(0) mais reste assez petit pour ne pas influencer le résultat
+    epsilon = 10e-7
+
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
-    # de la propabilité (+ epsilon pour traiter les nuls)
-    # s=list(texte)
-    # current = s[0]
-    # for next_ in s[1:] :
-    #     i = char_to_id(current)
-    #     j = char_to_id(next_)
-    #     #logging.info("bigramme %s%s (%f)", current, next_, np.log(fr_bigrams[i,j] + epsilon))
-    #     plau+=np.log(fr_bigrams[i,j] + epsilon)
-    #     current = next_
-
-    # plau=plau/len(texte)
-    # return plau
-
-    big=np.zeros((26, 27))
+    # de la probabilité (+ epsilon pour traiter les cas nuls)
+    big=np.zeros((27, 27))
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        if current != ' ' :
-            i = char_to_id(current)
-            j = char_to_id(next_)
-            big[i][j]+=np.log(fr_bigrams[i][j] + epsilon)
+        i = char_to_id(current)
+        j = char_to_id(next_)
+        big[i][j]+=np.log(fr_bigrams[i][j] + epsilon)
         current = next_
 
     plau=np.sum(big)/len(texte)
@@ -306,15 +294,24 @@ def dechiffre(texte, code):
         --
         retourne    : texte déchiffré (string)
     """
-    #logging.info("Nouveau code                %s", code)
-    res = ""
-    for c in texte:
+
+    freq = frequence(texte)
+    fk   = list(freq.keys())
+    # copie du texte sous forme de tableau
+    res = list(texte)
+    # chaque lettre du texte est remplacée par son équivalente dans le 
+    # tableau des fréquences de référence.
+    # i est l'indice global de res
+    i=0  
+    for c in res:
         if c != ' ' :
-            i=code.index(c)
-            res += fk_ref[i]
-        else:
-            res += " "
-    return res
+            # indice du caractère dans le tableau ordonné par fréqeunce
+            indice = fk.index(c)
+            # sub = caractère du même indice dans la clef
+            sub = code[indice]
+            res[i]=sub
+        i+=1
+    return ''.join(res)
 
 
 def chiffre(texte):
@@ -337,18 +334,15 @@ def echange(clef):
         --
         retourne    : nouvelle clef
     """
+    liste=list(clef)
+
     i = np.random.randint(0,26)
     j = np.random.randint(0,26)
-
-    # tirage pondéré par la place de la lettre dans le tableau des fréquences
-    #a,b = rd.choices(range(0,26), weights=list(fkv_ref.values()), k=2)
     while i == j:
         j = np.random.randint(0,26)
 
-    logging.debug("Echange %d(%s) et %d(%s)", i, clef[i], j, clef[j])
-    clef[i], clef[j] = clef[j], clef[i]
-    #clef[a], clef[b] = clef[b], clef[a]
-    return clef
+    liste[i], liste[j] = liste[j], liste[i]
+    return ''.join(liste)
 
 
 def acceptation(cur, new):
@@ -364,7 +358,7 @@ def acceptation(cur, new):
         return True
     return False
 
-def metropolis(max_iter, texte_init):
+def metropolis(max_iter, texte_init, code_init):
     """
         Application de l'algorithme de Metropolis-Hastings.
 
@@ -386,19 +380,15 @@ def metropolis(max_iter, texte_init):
     break_plau = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
     score_mots = 0             # score calculé du message décodé (c.f. fonction score)
 
-    # le premier code est calculé sur la base des fréquences des lettres dans le message codé
-    freq = frequence(texte_init)
-    cur_code  = list(freq.keys())
+    cur_code  = code_init
     cur_texte = dechiffre(texte_init, cur_code)
     # score_mots = score(cur_texte)
     # cur_plau = 4*score_mots + plausibilite(cur_texte)
     cur_plau = plausibilite(cur_texte)
-    logging.info("Code initial (p=%f) %s", cur_plau, cur_code)
-    logging.info("Proposition initiale [%s]", cur_texte)
 
     best_text  = cur_texte
     best_plau  = cur_plau                
-    best_code  = cur_code.copy()
+    best_code  = code_init
 
     cpt=0
     while cpt < max_iter :
@@ -417,21 +407,21 @@ def metropolis(max_iter, texte_init):
         if new_plau > cur_plau:
             cur_texte = new_texte
             cur_plau  = new_plau                
-            cur_code  = new_code.copy()   
+            cur_code  = new_code   
             if new_plau > best_plau:
                 logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
                 best_text  = new_texte
                 best_plau  = new_plau                
-                best_code  = new_code.copy()     
+                best_code  = new_code     
         else:
             # fonction d'acceptation de Metropolis-Hastings
             x = rd.random()
-            if x <=  (cur_plau / new_plau) * 0.005 : 
+            if x <=  (cur_plau / new_plau) * 0.001 : 
             #if x <= np.exp(new_plau - cur_plau) :
-                logging.info("(itération %d) Dégradation plausibilité %f", cpt, new_plau)
+                logging.info("(itération %d) Dégradation plausibilité de %f vers %f", cpt, cur_plau, new_plau)
                 cur_texte = new_texte
                 cur_plau  = new_plau                
-                cur_code  = new_code.copy()  
+                cur_code  = new_code 
 
     return best_code, best_plau, best_text
 
@@ -459,11 +449,13 @@ fichier = open(r'Les-misérables.txt','r')
 livre = fichier.read()
 fichier.close
 baba = simplifie(livre)
+with open('baba.txt', 'w') as f:
+    f.write(baba)
 # chargement des fréquenes des lettres de référence
 fkv_ref = frequence(baba)
 fk_ref  = list(fkv_ref.keys())
 
-# Chargement des probabilités des bigrammes de référence
+# Calcul des bigrammes de référence
 fr_bigrams = bigramme(baba)
 ic_ref = indice(baba)
 # p = plausibilite(baba)
@@ -525,8 +517,7 @@ enigme = """DN ANTRIE QERT VRE DES EAMNATS SLUEAT EAMNATS NQNAT VRE O ETIE JLFFE
             A N CNS XESLUA OE PE MIEUA"""
 enigme = simplifie(enigme)
 logging.info("---- Déchiffrement d'un extrait d'Emile de JJ Rousseau")
-code, p, solution = metropolis(10000, enigme)
-logging.info("Freq Ref                    %s", fk_ref)
+code, p, solution = metropolis(10000, enigme, fk_ref)
 logging.info("Meilleur code (p=%f) %s", p, code)
 logging.info("Proposition finale [%s]", solution)
 

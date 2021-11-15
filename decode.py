@@ -127,8 +127,8 @@ def bigramme(texte):
 
     # matrice 26*27 ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
     #un bigramme ne commence pas par un espace (mais peut se terminer par un)
-    big=np.zeros((26, 27))       
-    cpt=np.zeros((26))
+    big=np.zeros((27, 27))       
+    cpt=np.zeros((27))
     
     # parcourt du text en lisant un caractère (current) et le suivant (next_)
     # on découpe ainsi le texte en bigrammes
@@ -137,14 +137,13 @@ def bigramme(texte):
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        if current != ' ' :
-            i = char_to_id(current)
-            j = char_to_id(next_)
-            big[i][j]+=1
-            cpt[i]+=1
+        i = char_to_id(current)
+        j = char_to_id(next_)
+        big[i][j]+=1
+        cpt[i]+=1
         current = next_
 
-    for i in range(26):
+    for i in range(27):
         if cpt[i] != 0:
             for j in range(27):
                 big[i][j] = big[i][j] / cpt[i]    
@@ -204,14 +203,13 @@ def plausibilite(texte, big_ref):
 
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la probabilité (+ epsilon pour traiter les cas nuls)
-    big=np.zeros((26, 27))
+    big=np.zeros((27, 27))
     s=list(texte)
     current = s[0]
     for next_ in s[1:] :
-        if current != ' ' :
-            i = char_to_id(current)
-            j = char_to_id(next_)
-            big[i][j]+=np.log(big_ref[i][j] + epsilon)
+        i = char_to_id(current)
+        j = char_to_id(next_)
+        big[i][j]+=np.log(big_ref[i][j] + epsilon)
         current = next_
 
     plau=np.sum(big)/len(texte)
@@ -347,6 +345,13 @@ p = plausibilite(baba, big_ref)
     de Monte-Carlo que l'on va itérer un certain nombre de fois.
 """
 enigme='Lo zotf jwt stl mokaosstwkl rt sa souft kafutl tm a s ayywm rtkkotkt stwk stxtt rt haxtl, tm stl mokaosstwkl rt sa zafsotwt dalltl a s afust rt sa kwt, lt dgfmktktfm lgwraoftdtfm  jwtsjwt eiglt jwo ktdwaom rafl sa ywdtt.'
+enigme = """DN ANTRIE QERT VRE DES EAMNATS SLUEAT EAMNATS NQNAT VRE O ETIE JLFFES SU ALRS QLRDLAS CEIQEITUI 
+            PET LIOIE ALRS CILORUILAS OES MIRUTS CIEPLPES VRU A NRILAT AU FNTRIUTE AU SNQERI ET AE TNIOEILAT 
+            CNS N SE PLIILFCIE ALRS NRILAS OE HERAES OLPTERIS ET OE QUERB EAMNATS D EAMNAPE N OES FNAUEIES OE 
+            QLUI OE CEASEI OE SEATUI VRU DRU SLAT CILCIES IUEA A EST FLUAS SEASE VRE O Y QLRDLUI SRXSTUTREI 
+            DES ALTIES ET H NUFEINUS NRTNAT EBUGEI VR EAMNAT ERT PUAV CUEOS OE JNRT VRE OR HRGEFEAT N OUB 
+            NAS EA EMMET N VRLU DRU SEIQUINUT DN INUSLA N PET NGE EDDE EST DE MIEUA OE DN MLIPE ET D EAMNAT 
+            A N CNS XESLUA OE PE MIEUA"""
 baba = simplifie(enigme)
 prop = dechiffrer(baba, list(freq_ref.keys()))
 p = plausibilite(prop, big_ref)
