@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-import logging
 import re
 import os
 import numpy as np
@@ -48,7 +47,7 @@ def charge_dico():
         pickle.dump(fr_dico, open( fr_dat, "wb" ))
 
     cpt_mots = len(fr_dico)
-    logging.info("Chargement dictionnaire FR terminé (%d mots)", cpt_mots)
+    print("Chargement dictionnaire FR terminé ({} mots)".format(cpt_mots))
     return fr_dico
 
 
@@ -131,7 +130,7 @@ def simplifie(texte):
     #   utilisation de la lib re = regular expression
     res = re.sub('\s+',' ', maj)
     
-    logging.info("Simplification du texte terminée: %d caractères", len(res))
+    print("Simplification du texte terminée: {} caractères".format(len(res)))
     return res
 
 
@@ -153,7 +152,6 @@ def frequence(texte):
     for k in alphabet:
         freq[k]=texte.count(k)
         total+=freq[k]
-        logging.debug("comptage des %s : %d", k, freq[k])
 
     for k in alphabet:
         freq[k]=freq[k]/total
@@ -161,8 +159,6 @@ def frequence(texte):
     # trie le dict par valeurs
     # REFERENCE: https://stackoverflow.com/questions/613183/how-do-i-sort-a-dictionary-by-value
     sorted_by_values = dict(sorted(freq.items(), key=lambda item:item[1]))
-    logging.debug("Lettres par fréquence d'apparition %s", sorted_by_values)
-
     return sorted_by_values  
 
 
@@ -176,14 +172,17 @@ def bigramme(texte):
 
         texte       : texte dont on extrait les bigrammes
         --
-        retourne    : fréquences des bigrammes du texte (tableau 2D)
+        retourne    : probabilité des bigrammes du texte (tableau 2D)
     """   
+
+    #permet d'éviter de prendre log(0) mais reste assez petit pour ne pas influencer le résultat
+    epsilon = 10e-7
 
     # matrice ou la ligne correspond à la première lettre du bigramme et la colonne à la seconde
     big=np.zeros((27, 27))       
     cpt=np.zeros((27))
     
-    # parcourt du text en lisant un caractère (current) et le suivant (next_)
+    # parcourt texte en lisant un caractère (current) et le suivant (next_)
     # on découpe ainsi le texte en bigrammes
     # pour chaque bigramme rencontré on incrémente le compteur associé dans le tableau big
     # et le compteur de la famille
@@ -196,11 +195,14 @@ def bigramme(texte):
         cpt[i]+=1
         current = next_
 
+    # la matrice est normalisée ligne à ligne et mise à l'échelle logarithmique
     for i in range(27):
         if cpt[i] != 0:
             for j in range(27):
-                big[i][j] = big[i][j] / cpt[i]    
-                
+                big[i][j] = np.log( (big[i][j] / cpt[i]) + epsilon )    
+        else:
+            for j in range(27):
+                big[i][j] = np.log( epsilon )                 
     return big
 
 
@@ -231,7 +233,7 @@ def indice(texte):
 
     res = sum/den
 
-    logging.info("Indice de coincidence du texte (vaut environ 0.0746 en français) : %f", res)
+    print("Indice de coincidence du texte (vaut environ 0.0746 en français): {:10.6f}".format(res))
     return res
 
 
@@ -247,9 +249,6 @@ def plausibilite(texte):
     """
     global fr_bigrams
 
-    #permet d'éviter de prendre log(0) mais reste assez petit pour ne pas influencer le résultat
-    epsilon = 10e-7
-
     # repérage des bigrammes dans le texte, à chaque occurence on ajoute le log
     # de la probabilité (+ epsilon pour traiter les cas nuls)
     big=np.zeros((27, 27))
@@ -258,7 +257,7 @@ def plausibilite(texte):
     for next_ in s[1:] :
         i = char_to_id(current)
         j = char_to_id(next_)
-        big[i][j]+=np.log(fr_bigrams[i][j] + epsilon)
+        big[i][j]+=fr_bigrams[i][j]
         current = next_
 
     plau=np.sum(big)/len(texte)
@@ -322,7 +321,7 @@ def chiffre(texte):
 
     code = rd.sample(alphabet, 26)
     simple = simplifie(texte)
-    return dechiffre(simple, code)
+    return code, dechiffre(simple, code)
 
 
 def echange(clef):
@@ -377,7 +376,7 @@ def metropolis(max_iter, texte_init, code_init):
         --
         retourne    : proposition de déchiffrement
     """
-    break_plau = -1.6          # max plausibilité calculée à partir de laquelle on estime le résultat juste
+    break_plau = -1.7          # max plausibilité calculée à partir de laquelle on estime le résultat juste
     score_mots = 0             # score calculé du message décodé (c.f. fonction score)
 
     cur_code  = code_init
@@ -409,7 +408,7 @@ def metropolis(max_iter, texte_init, code_init):
             cur_plau  = new_plau                
             cur_code  = new_code   
             if new_plau > best_plau:
-                logging.info("(itération %d) Meilleure plausibilité %f", cpt, new_plau)
+                print("(itération {}) Meilleure plausibilité {:10.6f}".format(cpt, new_plau))
                 best_text  = new_texte
                 best_plau  = new_plau                
                 best_code  = new_code     
@@ -418,7 +417,7 @@ def metropolis(max_iter, texte_init, code_init):
             x = rd.random()
             if x <=  (cur_plau / new_plau) * 0.001 : 
             #if x <= np.exp(new_plau - cur_plau) :
-                logging.info("(itération %d) Dégradation plausibilité de %f vers %f", cpt, cur_plau, new_plau)
+                print("(itération {}) Dégradation plausibilité de {:10.6f} vers {:10.6f}".format(cpt, cur_plau, new_plau))
                 cur_texte = new_texte
                 cur_plau  = new_plau                
                 cur_code  = new_code 
@@ -428,9 +427,6 @@ def metropolis(max_iter, texte_init, code_init):
 
 # Point d'entrée du programme, utilisation depuis la ligne de commande:
 # python3 fr_bigramme.py
-FORMAT = '%(asctime)-15s:%(levelname)s:%(message)s'
-logging.basicConfig(format=FORMAT)
-logging.getLogger().setLevel(logging.INFO)
 
 """
     Chargement des mots de la langue française
@@ -443,7 +439,7 @@ fr_dico     = charge_dico()
         - l'indice de coincidence
         - le tableau des fréquences des bigrammes en français
 """
-logging.info("Analyse des Misérables")
+print ("Analyse des Misérables")
 fichier = open(r'Les-misérables.txt','r')
 #fichier = open(r'swann.txt','r')
 livre = fichier.read()
@@ -459,7 +455,7 @@ fk_ref  = list(fkv_ref.keys())
 fr_bigrams = bigramme(baba)
 ic_ref = indice(baba)
 # p = plausibilite(baba)
-# logging.info("Plausibilité des Misérables (p=%f)", p)
+# print ("Plausibilité des Misérables {:10.6f}".format(p))
 
 # Génération du graphe de densité de probabilités
 x_labels=list(alphabet_)
@@ -473,32 +469,31 @@ plt.xticks(range(len(x_labels)), x_labels)
 plt.yticks(range(len(y_labels)), y_labels)
 plt.savefig('fr_bigrams.png')
 
-for i, c1 in enumerate(alphabet):
-    for j, c2 in enumerate(alphabet_):
-        logging.debug("[%s %s] = %f", c1, c2, fr_bigrams[i][j])   
-
 """
     Analyse d'une expression française pour vérifier la validité des fonctions d'analyse
 """
 # expr_fr = "Bonjour: c'est la salutation de base en français et peut être utilisé par tout le monde. C'est un mot à la fois formel et informel"
-# logging.info("Analyse de [%s]", expr_fr)
+# print("Analyse de {}".format(expr_fr))
 # baba = simplifie(expr_fr)
 # ic = indice(baba)
 # p = plausibilite(baba)
-# logging.info("Plausibilité de expr_fr (p=%f)", p)
+# print("Plausibilité de expr_fr {:10.6f}".format(p))
+
 """
     Analyse d'une expression anglaise pour vérifier la non validité des fonctions d'analyse dans ce cas
 """
 # expr_en = "Thanks so much. This is a simple sentence you can use to thank someone"
-# logging.info("Analyse de [%s]", expr_en)
+# print("Analyse de {}".format(expr_en))
 # baba = simplifie(expr_en)
 # ic = indice(baba)
 # p = plausibilite(baba)
-# logging.info("Plausibilité de expr_en (p=%f)", p)
+# print("Plausibilité de expr_en {:10.6f}".format(p))
 
 """
     Déchiffrement d'un texte codé par substitution.
 """
+
+# Texte initial
 emile = """La nature veut que les enfants soient enfants avant que d’être hommes. Si nous voulons 
             pervertir cet ordre, nous produirons des fruits précoces, qui n’auront ni maturité ni saveur, 
             et ne tarderont pas à se corrompre ; nous aurons de jeunes docteurs et de vieux enfants. 
@@ -507,27 +502,19 @@ emile = """La nature veut que les enfants soient enfants avant que d’être hom
             pieds de haut, que du jugement à dix ans. En effet, à quoi lui servirait la raison à cet âge ? 
             Elle est le frein de la force, et l’enfant n’a pas besoin de ce frein."""
 
-#enigme = chiffre(emile)
-enigme = """DN ANTRIE QERT VRE DES EAMNATS SLUEAT EAMNATS NQNAT VRE O ETIE JLFFES SU ALRS QLRDLAS CEIQEITUI 
-            PET LIOIE ALRS CILORUILAS OES MIRUTS CIEPLPES VRU A NRILAT AU FNTRIUTE AU SNQERI ET AE TNIOEILAT 
-            CNS N SE PLIILFCIE ALRS NRILAS OE HERAES OLPTERIS ET OE QUERB EAMNATS D EAMNAPE N OES FNAUEIES OE 
-            QLUI OE CEASEI OE SEATUI VRU DRU SLAT CILCIES IUEA A EST FLUAS SEASE VRE O Y QLRDLUI SRXSTUTREI 
-            DES ALTIES ET H NUFEINUS NRTNAT EBUGEI VR EAMNAT ERT PUAV CUEOS OE JNRT VRE OR HRGEFEAT N OUB 
-            NAS EA EMMET N VRLU DRU SEIQUINUT DN INUSLA N PET NGE EDDE EST DE MIEUA OE DN MLIPE ET D EAMNAT 
-            A N CNS XESLUA OE PE MIEUA"""
-enigme = simplifie(enigme)
-logging.info("---- Déchiffrement d'un extrait d'Emile de JJ Rousseau")
+# Le texte est chiffré à l'aide d'une clef de chiffrement tirée au hasard
+clef, enigme = chiffre(emile)
+
+# Le texte codé est déchiffré à l'aide d'un algorithme de Metropolis-Hastings
 code, p, solution = metropolis(10000, enigme, fk_ref)
-logging.info("Meilleur code (p=%f) %s", p, code)
-logging.info("Proposition finale [%s]", solution)
 
-# enigme = """NASJX OXH NXH SOE BXYA SJXEA PY SNXYZEA ! YH ZASJSEG BSP ZAEJESG, RSA G SP ZY JY ? OS BAXBXPEZEXH 
-#             EHRGYZ GS DEPBSAEZEXH, P'SKKASHRUEPPSHZ D'YH SZZAENYZ BSAOE JEHTZ-PEM. BSP RXH ! (XYE C'SE KSEZ KXAZ) 
-#             JXEGS QYE PSHP PXYBRXH PSYAS ASJEA ZXH RENXYGXZ, XY DY OXEHP ZXH SAZ DY BLZUXH. SY BGSEPEA D'YH 
-#             CXYA HXYP JXEA SYZXYA D'YH NXRV XY DY KGSRXH D'YH JEH, QY'EG PXEZ NGSHR XY AYNEP. ZXH JEG SOE"""
+# Présentation des résultats
+print ("# ---------------------------------")
+print ("# Texte chiffré                   : {}".format(enigme))
+print ("# Clef de chiffrement initiale    : {}".format(clef))
+print ("# Code intial (fréquence français): {}".format(fk_ref))
+print ("# Meilleur code de dechiffrement  : {}".format(list(code)))
+print ("# Plausibilité de la solution     : {:10.6f}".format(p))
+print ("# Proposition finale              : {}".format(solution))
+print ("# ---------------------------------")
 
-# logging.info("---- Déchiffrement d'un enigme")
-# baba = simplifie(enigme)
-# code, p, solution = metropolis(100, baba)
-# logging.info("Meilleur code trouvé (p=%f) %s", p, code)
-# logging.info("Proposition finale [%s]", solution)
