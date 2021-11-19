@@ -376,7 +376,7 @@ def metropolis(max_iter, texte_init, code_init):
         --
         retourne    : proposition de déchiffrement
     """
-    break_plau = -1.7          # max plausibilité calculée à partir de laquelle on estime le résultat juste
+    break_plau = -2.1          # max plausibilité calculée à partir de laquelle on estime le résultat juste
     score_mots = 0             # score calculé du message décodé (c.f. fonction score)
 
     cur_code  = code_init
@@ -495,20 +495,22 @@ plt.savefig('fr_bigrams.png')
 
 # Texte initial
 emile = """La nature veut que les enfants soient enfants avant que d’être hommes. Si nous voulons 
-            pervertir cet ordre, nous produirons des fruits précoces, qui n’auront ni maturité ni saveur, 
-            et ne tarderont pas à se corrompre ; nous aurons de jeunes docteurs et de vieux enfants. 
-            L’enfance a des manières de voir, de penser, de sentir, qui lui sont propres ; rien n’est moins 
-            sensé que d’y vouloir substituer les nôtres ; et j’aimerais autant exiger qu’enfant eût cinq 
-            pieds de haut, que du jugement à dix ans. En effet, à quoi lui servirait la raison à cet âge ? 
-            Elle est le frein de la force, et l’enfant n’a pas besoin de ce frein."""
+                                    pervertir cet ordre, nous produirons des fruits précoces, qui n’auront ni maturité ni saveur, 
+                                    et ne tarderont pas à se corrompre ; nous aurons de jeunes docteurs et de vieux enfants. 
+                                    L’enfance a des manières de voir, de penser, de sentir, qui lui sont propres ; rien n’est moins 
+                                    sensé que d’y vouloir substituer les nôtres ; et j’aimerais autant exiger qu’enfant eût cinq 
+                                    pieds de haut, que du jugement à dix ans. En effet, à quoi lui servirait la raison à cet âge ? 
+                                    Elle est le frein de la force, et l’enfant n’a pas besoin de ce frein."""
 
 # Le texte est chiffré à l'aide d'une clef de chiffrement tirée au hasard
 clef, enigme = chiffre(emile)
 
 # Le texte codé est déchiffré à l'aide d'un algorithme de Metropolis-Hastings
-code, p, solution = metropolis(10000, enigme, fk_ref)
+code, p, solution = metropolis(20000, enigme, fk_ref)
 
 # Présentation des résultats
+print ("# ---------------------------------")
+print ("# Texte initial                   : {}".format(emile))
 print ("# ---------------------------------")
 print ("# Texte chiffré                   : {}".format(enigme))
 print ("# Clef de chiffrement initiale    : {}".format(clef))
